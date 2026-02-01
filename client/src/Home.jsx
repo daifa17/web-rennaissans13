@@ -401,7 +401,7 @@ const Home = () => {
       {/* HERO SECTION */}
       <header id="hero" className="text-center pt-32 pb-16 px-4 relative overflow-hidden z-10">
           <div className="relative z-10 flex flex-col items-center justify-center mb-8 group animate-fade-in-up">
-             <div className="relative w-32 h-32 md:w-44 md:h-44 rounded-full bg-[#0a1529] border-4 border-yellow-500/50 shadow-[0_0_60px_rgba(234,179,8,0.4)] flex items-center justify-center animate-float group-hover:scale-105 transition duration-500 overflow-hidden"><img src="https://via.placeholder.com/200/FFD700/000000?text=LOGO" alt="Logo" className="w-full h-full object-cover p-2 rounded-full opacity-90 group-hover:opacity-100 transition"/></div>
+             <div className="relative w-32 h-32 md:w-44 md:h-44 rounded-full bg-[#0a1529] border-4 border-yellow-500/50 shadow-[0_0_60px_rgba(234,179,8,0.4)] flex items-center justify-center animate-float group-hover:scale-105 transition duration-500 overflow-hidden"><img src="logo.png" alt="Logo" className="w-full h-full object-cover p-2 rounded-full opacity-90 group-hover:opacity-100 transition"/></div>
              <div className="mt-4 bg-gradient-to-r from-yellow-700 to-yellow-500 text-black text-[10px] md:text-xs font-bold px-6 py-1 rounded-full tracking-[0.2em] uppercase shadow-lg transform -translate-y-4 group-hover:-translate-y-2 transition duration-300">Est. 2024</div>
           </div>
           <h1 className="text-4xl md:text-7xl font-serif text-yellow-500 font-bold mb-4 tracking-wider relative z-10 animate-fade-in-up" style={{animationDelay: '0.3s'}}>
