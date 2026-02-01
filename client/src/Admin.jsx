@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from './supabaseClient'; // Pakai Supabase Client
 
-const AdminDashboard = () => {
+const Admin = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('students');
   
@@ -309,7 +309,9 @@ const AdminDashboard = () => {
                         </div>
                     </form>
                 )}
-                <div className="overflow-hidden bg-[#0f2545] rounded-xl border border-white/10 shadow-xl">
+                
+                {/* --- FIX SCROLL TABEL DISINI --- */}
+                <div className="table-scroll">
                     <table className="w-full text-left">
                         <thead className="bg-[#0a192f] text-gray-400 text-xs uppercase font-bold tracking-wider"><tr><th className="px-6 py-4">Foto</th><th className="px-6 py-4">Nama</th><th className="px-6 py-4">Jabatan</th><th className="px-6 py-4 text-right">Aksi</th></tr></thead>
                         <tbody className="divide-y divide-white/5">
@@ -460,7 +462,9 @@ const AdminDashboard = () => {
         {activeTab === 'words' && (
             <div className="animate-fade-in-up">
                  <h1 className="text-3xl font-bold mb-6">Moderasi Words Unsaid</h1>
-                 <div className="overflow-hidden rounded-xl border border-white/10 shadow-xl">
+                 
+                 {/* --- FIX SCROLL TABEL DISINI JUGA --- */}
+                 <div className="table-scroll">
                     <table className="w-full text-left bg-[#0f2545]">
                         <thead className="bg-[#0a192f] text-gray-400 text-xs uppercase font-bold"><tr><th className="px-6 py-4">Untuk</th><th className="px-6 py-4">Pesan</th><th className="px-6 py-4 text-right">Aksi</th></tr></thead>
                         <tbody className="divide-y divide-white/5">
@@ -508,4 +512,4 @@ const AdminDashboard = () => {
   );
 };
 
-export default AdminDashboard;
+export default Admin;

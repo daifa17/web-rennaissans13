@@ -5,8 +5,10 @@
 body {
   background-color: #0a192f;
   color: white;
+  margin: 0;
 }
-/* --- ANIMASI GALERI BERJALAN (TANPA LIBRARY) --- */
+
+/* --- ANIMASI GALERI BERJALAN --- */
 @keyframes scroll {
   0% { transform: translateX(0); }
   100% { transform: translateX(-50%); }
@@ -14,14 +16,42 @@ body {
 
 .animate-scroll {
   display: flex;
-  width: max-content; /* Agar panjangnya menyesuaikan isi */
-  animation: scroll 25s linear infinite; /* Kecepatan jalan */
+  width: max-content;
+  animation: scroll 25s linear infinite;
 }
 
 .animate-scroll:hover {
-  animation-play-state: paused; /* Berhenti kalau di-hover */
+  animation-play-state: paused;
 }
+
 .writing-vertical {
   writing-mode: vertical-rl;
   text-orientation: mixed;
+}
+
+/* --- FIX: TABEL RESPONSIF (AGAR TIDAK KEPOTONG DI HP) --- */
+.table-scroll {
+  width: 100%;
+  overflow-x: auto; /* Ini yang bikin bisa digeser ke samping */
+  -webkit-overflow-scrolling: touch; /* Biar licin di HP */
+  margin-bottom: 20px;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  background-color: #112240;
+}
+
+/* Paksa tabel punya lebar minimal biar teks tidak gepeng */
+.table-scroll table {
+  min-width: 800px; 
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* Perbaiki spasi tabel biar rapi */
+.table-scroll th, 
+.table-scroll td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid #1e293b;
+  white-space: nowrap; /* Biar tulisan tidak turun ke bawah */
 }
