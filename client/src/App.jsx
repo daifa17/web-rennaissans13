@@ -1,23 +1,23 @@
 import React from 'react';
-import { Routes, Route } from 'react-router-dom';
-
-// --- IMPORT SEMUA HALAMAN DISINI ---
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Home from './Home';
-import Admin from './Admin';
-import Login from './Login'; // <--- Pastikan baris ini ada!
+import Login from './Login';
+import AdminDashboard from './AdminDashboard'; // Pastikan nama filenya sesuai
 
 function App() {
   return (
-    <Routes>
-      {/* Halaman Utama (Home) */}
-      <Route path="/" element={<Home />} />
-      
-      {/* Halaman Login (Gerbang Admin) */}
-      <Route path="/login" element={<Login />} />
-      
-      {/* Halaman Admin (Dashboard) */}
-      <Route path="/admin" element={<Admin />} />
-    </Routes>
+    <Router>
+      <Routes>
+        {/* Halaman Utama (Web Sekolah) */}
+        <Route path="/" element={<Home />} />
+        
+        {/* Halaman Login Admin */}
+        <Route path="/login" element={<Login />} />
+        
+        {/* Halaman Dashboard Admin */}
+        <Route path="/admin" element={<AdminDashboard />} />
+      </Routes>
+    </Router>
   );
 }
 

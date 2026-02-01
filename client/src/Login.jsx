@@ -1,21 +1,37 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from './supabaseClient'; // Pastikan path ini benar!
 
 const Login = () => {
   const navigate = useNavigate();
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    // Ganti 'admin' dan '12345' sesuai keinginanmu
-    if (username === 'admin@renaissans.com' && password === '123') {
-      
-      navigate('/admin'); // Kalau benar, masuk
-      
-    } else {
-      setError('Username atau Password salah!'); // Kalau salah, tolak
+    setError('');
+    setLoading(true);
+
+    try {
+      // INI LOGIC SUPABASE NYA
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: password,
+      });
+
+      if (error) throw error;
+
+      // Jika sukses, masuk ke admin
+      navigate('/admin'); 
+
+    } catch (err) {
+      // Tampilkan pesan error
+      setError('Email atau Password salah!');
+      console.error("Login Error:", err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -32,7 +48,6 @@ const Login = () => {
         {/* LOGO DI TENGAH ATAS */}
         <div className="flex justify-center mb-6">
           <div className="w-20 h-20 bg-[#051125] rounded-full border-2 border-yellow-500 flex items-center justify-center shadow-lg">
-             {/* Pastikan file logo.png ada di folder 'client/public/' */}
              <img src="/logo.png" alt="Logo" className="w-12 h-12 object-contain" />
           </div>
         </div>
@@ -52,13 +67,14 @@ const Login = () => {
         {/* FORM */}
         <form onSubmit={handleLogin} className="space-y-5">
           <div>
-            <label className="block text-yellow-500 text-xs font-bold mb-2 ml-1">USERNAME</label>
+            <label className="block text-yellow-500 text-xs font-bold mb-2 ml-1">EMAIL</label>
             <input 
-              type="text" 
-              placeholder="Masukkan username..."
+              type="email" 
+              placeholder="Masukkan email admin..."
               className="w-full bg-[#051125] border border-white/10 rounded-lg p-3 text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 outline-none transition"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
             />
           </div>
           
@@ -70,21 +86,23 @@ const Login = () => {
               className="w-full bg-[#051125] border border-white/10 rounded-lg p-3 text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 outline-none transition"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              required
             />
           </div>
 
           <button 
             type="submit" 
-            className="w-full bg-gradient-to-r from-yellow-600 to-yellow-500 text-black font-bold py-3 rounded-lg hover:shadow-[0_0_20px_rgba(234,179,8,0.4)] transition transform hover:-translate-y-1 mt-4"
+            disabled={loading}
+            className="w-full bg-gradient-to-r from-yellow-600 to-yellow-500 text-black font-bold py-3 rounded-lg hover:shadow-[0_0_20px_rgba(234,179,8,0.4)] transition transform hover:-translate-y-1 mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            MASUK DASHBOARD
+            {loading ? 'MEMERIKSA...' : 'MASUK DASHBOARD'}
           </button>
         </form>
 
         {/* FOOTER KECIL */}
         <div className="mt-8 text-center border-t border-white/5 pt-4">
            <button onClick={() => navigate('/')} className="text-gray-500 hover:text-yellow-500 text-sm transition">
-              ← Kembali ke Halaman Utama
+             ← Kembali ke Halaman Utama
            </button>
         </div>
 
