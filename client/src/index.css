@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #0a192f;
+  color: white;
+}
+/* --- ANIMASI GALERI BERJALAN (TANPA LIBRARY) --- */
+@keyframes scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-scroll {
+  display: flex;
+  width: max-content; /* Agar panjangnya menyesuaikan isi */
+  animation: scroll 25s linear infinite; /* Kecepatan jalan */
+}
+
+.animate-scroll:hover {
+  animation-play-state: paused; /* Berhenti kalau di-hover */
+}
+.writing-vertical {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
