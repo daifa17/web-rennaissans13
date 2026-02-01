@@ -354,73 +354,7 @@ app.delete('/flashback/:id', (req, res) => {
         return res.json({ message: "Video Deleted" });
     });
 });
-// ==========================================
-// I. FITUR TIME CAPSULE (REAL DATABASE)
-// ==========================================
 
-// 1. Simpan Pesan (User Bikin Kode Sendiri)
-app.post('/timecapsule', (req, res) => {
-    const { sender_name, message, unlock_date, secret_key } = req.body; 
-    
-    // Validasi: Kode wajib diisi
-    if (!secret_key) return res.status(400).json({ message: "Wajib bikin kode rahasia!" });
-
-    // Cek dulu: Apakah kode ini sudah ada di database?
-    db.query("SELECT * FROM time_capsules WHERE secret_key = ?", [secret_key], (err, result) => {
-        if (err) return res.status(500).json(err);
-
-        // Jika kode sudah ada (result > 0), tolak!
-        if (result.length > 0) {
-            return res.status(400).json({ message: "Yah, kode itu sudah dipakai orang lain. Coba ganti yang unik!" });
-        }
-
-        // Jika kode aman, BARU SIMPAN ke Database
-        const sql = "INSERT INTO time_capsules (sender_name, message, unlock_date, secret_key) VALUES (?, ?, ?, ?)";
-        
-        db.query(sql, [sender_name, message, unlock_date, secret_key], (err, insertResult) => {
-            if (err) return res.status(500).json(err);
-            return res.json({ status: "Success", secret_key: secret_key });
-        });
-    });
-});
-
-// 2. Buka Pesan (Cek Kode & Tanggal)
-app.post('/timecapsule/open', (req, res) => {
-    const { secret_key } = req.body;
-    const today = new Date().toISOString().split('T')[0]; // Ambil tanggal hari ini (YYYY-MM-DD)
-
-    const sql = "SELECT * FROM time_capsules WHERE secret_key = ?";
-    
-    db.query(sql, [secret_key], (err, result) => {
-        if (err) return res.status(500).json(err);
-        
-        // 1. Cek apakah kodenya ada?
-        if (result.length === 0) {
-            return res.json({ status: "Not Found", message: "Kode kapsul tidak ditemukan!" });
-        }
-
-        const capsule = result[0];
-        
-        // 2. Cek apakah tanggalnya sudah sampai?
-        // Ambil tanggal unlock dari database
-        const unlockDate = new Date(capsule.unlock_date).toISOString().split('T')[0];
-
-        if (unlockDate > today) {
-            // Jika tanggal buka > hari ini = BELUM WAKTUNYA
-            return res.json({ 
-                status: "Locked", 
-                message: `Sabar ya! Pesan ini baru bisa dibuka tanggal ${unlockDate}`,
-                sender: capsule.sender_name 
-            });
-        }
-
-        // 3. Kalau lolos semua, tampilkan pesan
-        return res.json({ 
-            status: "Unlocked", 
-            data: capsule 
-        });
-    });
-});
 
 // --- 4. START SERVER ---
 app.listen(PORT, () => {
