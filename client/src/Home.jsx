@@ -1,88 +1,130 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
 import { TypeAnimation } from 'react-type-animation';
 import { Link } from 'react-router-dom';
+import { supabase } from './supabaseClient'; // Pastikan file ini sudah ada
 
-// --- KOMPONEN TIME CAPSULE FORM (USER INPUT KODE) ---
+// --- KOMPONEN TIME CAPSULE FORM (SUPABASE VERSION) ---
 const TimeCapsuleForm = () => {
   const [step, setStep] = useState('form'); // form | result | open
-  // Tambah state 'customCode'
   const [formData, setFormData] = useState({ name: '', message: '', date: '', customCode: '' });
-  const [finalCode, setFinalCode] = useState(''); // Kode final yang tersimpan
-  
-  // State untuk membuka kapsul
+  const [finalCode, setFinalCode] = useState(''); 
   const [inputKey, setInputKey] = useState('');
   const [openResult, setOpenResult] = useState(null); 
+  const [loading, setLoading] = useState(false);
 
-  const API_URL = 'http://localhost:3000';
-
-  // 1. HANDLER: SIMPAN PESAN
+  // 1. HANDLER: SIMPAN PESAN KE SUPABASE
   const handleLockMessage = async (e) => {
     e.preventDefault();
     if (!formData.date) return alert("Pilih tanggal bukanya dulu!");
     if (!formData.customCode) return alert("Bikin kode rahasiamu dulu!");
+    
+    setLoading(true);
 
     try {
-        const res = await axios.post(`${API_URL}/timecapsule`, {
-            sender_name: formData.name,
-            message: formData.message,
-            unlock_date: formData.date,
-            secret_key: formData.customCode // Kirim kode buatan user
-        });
-        
-        setFinalCode(res.data.secret_key);
-        setStep('result'); // Pindah ke tampilan sukses
-    } catch (err) {
-        // Tampilkan pesan error dari backend (misal: Kode sudah dipakai)
-        if (err.response && err.response.data) {
-            alert(err.response.data.message);
-        } else {
-            alert("Gagal mengunci pesan.");
+        // A. Cek apakah kode sudah dipakai?
+        const { data: existingData, error: checkError } = await supabase
+            .from('time_capsules')
+            .select('id')
+            .eq('secret_key', formData.customCode);
+
+        if (checkError) throw checkError;
+
+        if (existingData.length > 0) {
+            alert("Yah, kode itu sudah dipakai orang lain. Coba ganti yang unik!");
+            setLoading(false);
+            return;
         }
+
+        // B. Kalau aman, Simpan ke Database
+        const { error: insertError } = await supabase
+            .from('time_capsules')
+            .insert([{
+                sender_name: formData.name,
+                message: formData.message,
+                unlock_date: formData.date,
+                secret_key: formData.customCode
+            }]);
+
+        if (insertError) throw insertError;
+
+        // C. Sukses
+        setFinalCode(formData.customCode);
+        setStep('result');
+
+    } catch (err) {
+        console.error(err);
+        alert("Gagal mengunci pesan. Cek koneksi internet.");
+    } finally {
+        setLoading(false);
     }
   };
 
-  // 2. HANDLER: BUKA PESAN
+  // 2. HANDLER: BUKA PESAN DARI SUPABASE
   const handleOpenCapsule = async (e) => {
       e.preventDefault();
+      setLoading(true);
+      setOpenResult(null);
+
       try {
-          const res = await axios.post(`${API_URL}/timecapsule/open`, { secret_key: inputKey });
-          setOpenResult(res.data); 
+          // Ambil data berdasarkan kode
+          const { data, error } = await supabase
+            .from('time_capsules')
+            .select('*')
+            .eq('secret_key', inputKey)
+            .maybeSingle(); // Pakai maybeSingle biar gak error kalau kosong
+
+          if (error) throw error;
+
+          if (!data) {
+              setOpenResult({ status: 'NotFound' });
+          } else {
+              // Cek Tanggal
+              const today = new Date().toISOString().split('T')[0];
+              if (data.unlock_date > today) {
+                  setOpenResult({ 
+                      status: 'Locked', 
+                      message: `Sabar ya! Pesan ini baru bisa dibuka tanggal ${data.unlock_date}`,
+                      sender: data.sender_name 
+                  });
+              } else {
+                  setOpenResult({ status: 'Unlocked', data: data });
+              }
+          }
       } catch (err) {
-          alert("Error server.");
+          alert("Terjadi kesalahan saat membuka kapsul.");
+      } finally {
+          setLoading(false);
       }
   };
 
-  // --- TAMPILAN 1: SUKSES TERKUNCI ---
+  // --- UI TAMPILAN TIME CAPSULE ---
   if (step === 'result') {
     return (
       <div className="bg-gradient-to-br from-[#0f1f3b] to-[#0a1529] border border-green-500/30 p-8 rounded-2xl text-center shadow-2xl animate-fade-in-up h-full flex flex-col justify-center items-center">
         <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mb-4 text-3xl animate-bounce-slow">🔒</div>
         <h3 className="text-xl font-bold text-white mb-2">Berhasil Dikunci!</h3>
         <p className="text-gray-400 text-sm mb-4">Ingat baik-baik kode rahasia yang kamu buat ini:</p>
-        
         <div className="bg-black/40 border-2 border-dashed border-yellow-500 p-4 rounded-lg mb-6 w-full relative group cursor-pointer" onClick={() => {navigator.clipboard.writeText(finalCode); alert("Kode disalin!");}}>
             <h2 className="text-3xl font-mono font-bold text-yellow-500 tracking-widest uppercase">{finalCode}</h2>
             <p className="text-[10px] text-gray-500 mt-1 uppercase">Klik untuk copy</p>
         </div>
-
         <button onClick={() => {setStep('form'); setFormData({name:'', message:'', date:'', customCode:''});}} className="text-sm text-green-500 underline">Tulis pesan baru</button>
       </div>
     );
   }
 
-  // --- TAMPILAN 2: FORM BUKA KAPSUL ---
   if (step === 'open') {
       return (
         <div className="bg-[#0f1f3b] border border-white/10 p-8 rounded-2xl shadow-xl h-full flex flex-col relative animate-fade-in-up">
             <button onClick={() => {setStep('form'); setOpenResult(null);}} className="absolute top-4 left-4 text-gray-400 hover:text-white">← Kembali</button>
-            
             {!openResult ? (
                 <div className="flex-1 flex flex-col justify-center">
                     <h3 className="text-2xl font-bold text-yellow-500 mb-6 text-center">Buka Kapsul Waktu</h3>
                     <form onSubmit={handleOpenCapsule} className="space-y-4">
                         <input type="text" placeholder="Masukkan Kodemu..." value={inputKey} onChange={e => setInputKey(e.target.value)} className="w-full bg-black/30 border border-white/20 p-4 rounded-lg text-center text-xl font-bold text-white uppercase tracking-widest focus:border-yellow-500 outline-none" required />
-                        <button className="w-full bg-yellow-500 text-black font-bold py-3 rounded-lg hover:bg-yellow-400 transition">BUKA SEKARANG 🔓</button>
+                        <button disabled={loading} className="w-full bg-yellow-500 text-black font-bold py-3 rounded-lg hover:bg-yellow-400 transition">
+                            {loading ? "Mengecek..." : "BUKA SEKARANG 🔓"}
+                        </button>
                     </form>
                 </div>
             ) : (
@@ -116,30 +158,23 @@ const TimeCapsuleForm = () => {
       );
   }
 
-  // --- TAMPILAN 3: FORM UTAMA (INPUT DATA) ---
   return (
     <div className="bg-white/5 backdrop-blur-md border border-white/10 p-8 rounded-2xl shadow-xl hover:border-yellow-500/30 transition duration-500 relative overflow-hidden group h-full flex flex-col">
         <div className="flex justify-between items-center mb-6">
             <h4 className="font-bold text-white">Buat Kapsul Baru</h4>
             <button onClick={() => setStep('open')} className="text-[10px] bg-white/10 px-3 py-1 rounded border border-white/20 hover:bg-white/20 transition">PUNYA KODE?</button>
         </div>
-
         <form onSubmit={handleLockMessage} className="space-y-4 flex-1 flex flex-col">
             <input type="text" placeholder="Namamu..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required className="w-full bg-[#050b14]/80 border border-white/10 rounded-lg px-4 py-3 text-white focus:border-yellow-500 outline-none" />
-            
-            {/* INPUT KODE RAHASIA (BARU) */}
             <input type="text" placeholder="Bikin Kode Rahasia (cth: ALUMNI2024)" value={formData.customCode} onChange={e => setFormData({...formData, customCode: e.target.value})} required className="w-full bg-[#050b14]/80 border border-white/10 rounded-lg px-4 py-3 text-yellow-500 font-bold tracking-wider placeholder-gray-600 focus:border-yellow-500 outline-none uppercase" />
             <p className="text-[10px] text-gray-500 -mt-2">*Ingat kode ini untuk membuka pesan nanti.</p>
-
             <textarea rows="3" placeholder="Pesan untuk masa depan..." value={formData.message} onChange={e => setFormData({...formData, message: e.target.value})} required className="w-full bg-[#050b14]/80 border border-white/10 rounded-lg px-4 py-3 text-white focus:border-yellow-500 outline-none resize-none flex-1"></textarea>
-            
             <div className="bg-[#050b14]/80 p-3 rounded-lg border border-white/10">
                 <label className="block text-gray-500 text-[10px] uppercase font-bold mb-1">Bisa dibuka pada tanggal:</label>
                 <input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} required className="w-full bg-transparent text-white outline-none cursor-pointer" />
             </div>
-
-            <button type="submit" className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold py-3 rounded-lg shadow-lg hover:shadow-blue-600/40 transform hover:-translate-y-1 transition duration-300 flex justify-center items-center gap-2">
-                <span>Kunci Pesan</span><span>🔒</span>
+            <button disabled={loading} type="submit" className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold py-3 rounded-lg shadow-lg hover:shadow-blue-600/40 transform hover:-translate-y-1 transition duration-300 flex justify-center items-center gap-2">
+                {loading ? <span>Menyimpan...</span> : <><span>Kunci Pesan</span><span>🔒</span></>}
             </button>
         </form>
     </div>
@@ -148,8 +183,11 @@ const TimeCapsuleForm = () => {
 
 // --- KOMPONEN UTAMA HOME ---
 const Home = () => {
-  const API_URL = 'http://localhost:3000'; 
-  
+  // ⚠️ GANTI INI DENGAN PROJECT ID SUPABASE KAMU
+  // Format: https://[PROJECT_ID].supabase.co/storage/v1/object/public/public-files
+  // Contoh: https://abcdefghijklm.supabase.co/storage/v1/object/public/public-files
+  // Ganti [PROJECT_ID] dengan ID kamu yang tadi
+  const STORAGE_URL = 'https://fjagcvvlfaarxjitdbsy.supabase.co/storage/v1/object/public/public-files';
   // --- STATES & REF ---
   const bgAudioRef = useRef(null);
   const [showIntro, setShowIntro] = useState(true);
@@ -171,11 +209,9 @@ const Home = () => {
   const restoreVolume = () => { if (bgAudioRef.current) bgAudioRef.current.volume = 0.5; };
   const stopBgMusic = () => { if (bgAudioRef.current) bgAudioRef.current.pause(); };
 
-  // --- NAVBAR SCROLL EFFECT ---
+  // --- NAVBAR SCROLL ---
   useEffect(() => {
-    const handleScroll = () => {
-        setScrolled(window.scrollY > 50);
-    };
+    const handleScroll = () => { setScrolled(window.scrollY > 50); };
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
@@ -185,7 +221,7 @@ const Home = () => {
     if (element) element.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // --- DATA STATES ---
+  // --- STATES DATA ---
   const [students, setStudents] = useState([]);
   const [wali, setWali] = useState(null); 
   const [journey, setJourney] = useState([]); 
@@ -200,8 +236,6 @@ const Home = () => {
   const [showMusicModal, setShowMusicModal] = useState(false);
   const [showSigModal, setShowSigModal] = useState(false); 
   const [showWordModal, setShowWordModal] = useState(false);
-  
-  // --- STATE LIGHTBOX (GALERI) ---
   const [selectedImage, setSelectedImage] = useState(null);
 
   // --- INPUT STATES ---
@@ -214,54 +248,98 @@ const Home = () => {
   const fonts = ['font-marker', 'font-rock', 'font-caveat', 'font-shadows', 'font-dancing', 'font-indie', 'font-gloria'];
   const colors = ['text-pink-400', 'text-yellow-400', 'text-cyan-400', 'text-green-400', 'text-purple-400', 'text-red-400', 'text-white'];
 
-  // --- LOAD DATA ---
+  // --- LOAD DATA SUPABASE ---
   useEffect(() => {
     const fetchData = async () => {
-        try {
-            const resStudents = await axios.get(`${API_URL}/students`); setStudents(resStudents.data);
-            const resWali = await axios.get(`${API_URL}/wali`).catch(()=>null); setWali(resWali?.data);
-            const resJourney = await axios.get(`${API_URL}/journey`).catch(()=>null); setJourney(resJourney?.data || []);
-            const resPlaylist = await axios.get(`${API_URL}/playlist`).catch(()=>null); setPlaylist(resPlaylist?.data || []);
-            const resWords = await axios.get(`${API_URL}/words`).catch(()=>null); setWords(resWords?.data || []);
-            const resGallery = await axios.get(`${API_URL}/gallery`).catch(()=>null); setGallery(resGallery?.data || []);
-            const resFlashback = await axios.get(`${API_URL}/flashback`).catch(()=>null); setFlashback(resFlashback?.data || []);
-            fetchSignatures(); 
-        } catch (error) { console.error("Gagal load data:", error); }
+        // Helper
+        const get = async (table) => {
+            const { data } = await supabase.from(table).select('*').order('id', { ascending: true });
+            return data || [];
+        };
+
+        setStudents(await get('students'));
+        const w = await get('wali_kelas'); if(w && w.length > 0) setWali(w[0]);
+        setJourney(await get('journey'));
+        setPlaylist(await get('playlist'));
+        setWords(await get('words_unsaid'));
+        setGallery(await get('gallery'));
+        setFlashback(await get('flashback'));
+        
+        // Signatures need special sorting
+        const { data: sigs } = await supabase.from('signatures').select('*').order('created_at', { ascending: false });
+        if (sigs) {
+            const dataWithStyle = sigs.map(item => ({
+                ...item,
+                style: {
+                    rotation: `${Math.floor(Math.random() * 40) - 20}deg`, 
+                    scale: 0.9 + Math.random() * 0.3,
+                    color: colors[Math.floor(Math.random() * colors.length)],
+                    font: fonts[Math.floor(Math.random() * fonts.length)],
+                }
+            }));
+            setSignatures(dataWithStyle);
+        }
     };
     fetchData();
   }, []);
 
-  const fetchSignatures = async () => {
-    try {
-        const res = await axios.get(`${API_URL}/signatures`);
-        const dataWithStyle = res.data.map(item => ({...item, style: { rotation: `${Math.floor(Math.random() * 40) - 20}deg`, scale: 0.9 + Math.random() * 0.3, color: colors[Math.floor(Math.random() * colors.length)], font: fonts[Math.floor(Math.random() * fonts.length)] }}));
+  const reloadWords = async () => { 
+      const { data } = await supabase.from('words_unsaid').select('*'); 
+      if(data) setWords(data); 
+  };
+  const reloadPlaylist = async () => { 
+      const { data } = await supabase.from('playlist').select('*'); 
+      if(data) setPlaylist(data); 
+  };
+  const reloadSignatures = async () => {
+      const { data } = await supabase.from('signatures').select('*').order('created_at', { ascending: false });
+      if(data) {
+        const dataWithStyle = data.map(item => ({
+            ...item,
+            style: {
+                rotation: `${Math.floor(Math.random() * 40) - 20}deg`, 
+                scale: 0.9 + Math.random() * 0.3,
+                color: colors[Math.floor(Math.random() * colors.length)],
+                font: fonts[Math.floor(Math.random() * fonts.length)],
+            }
+        }));
         setSignatures(dataWithStyle);
-    } catch (error) {}
+      }
   };
 
-  const reloadWords = async () => { try { const res = await axios.get(`${API_URL}/words`); setWords(res.data); } catch (e) {} };
-  const reloadPlaylist = async () => { try { const res = await axios.get(`${API_URL}/playlist`); setPlaylist(res.data); } catch (e) {} };
+  // --- HANDLERS ---
+  const handleAddSignature = async (e) => { 
+    e.preventDefault(); 
+    if(!newSigName.trim()) return; 
+    const { error } = await supabase.from('signatures').insert([{ nama_pengirim: newSigName, pesan: "Signature Wall" }]);
+    if(!error) { setNewSigName(""); setShowSigModal(false); reloadSignatures(); alert("Tanda tangan ditempel!"); } 
+    else { alert("Gagal mengirim signature"); }
+  };
 
-  const handleAddSignature = async (e) => { e.preventDefault(); if(!newSigName.trim()) return; try { await axios.post(`${API_URL}/signatures`, { nama_pengirim: newSigName, pesan: "Signature Wall" }); setNewSigName(""); setShowSigModal(false); fetchSignatures(); alert("Tanda tangan ditempel!"); } catch (e) { alert("Error"); } };
-  
   const handleAddWord = async (e) => { 
-      e.preventDefault(); 
-      const recipient = newWordTo.trim() === "" ? "Seseorang" : newWordTo;
-      try { 
-          await axios.post(`${API_URL}/words`, { untuk: recipient, pesan: newWordMsg }); 
-          setNewWordTo(""); setNewWordMsg(""); setShowWordModal(false); reloadWords(); 
-          alert("Pesan terkirim!"); 
-      } catch (e) { alert("Error"); } 
+    e.preventDefault(); 
+    const recipient = newWordTo.trim() === "" ? "Seseorang" : newWordTo;
+    const { error } = await supabase.from('words_unsaid').insert([{ untuk: recipient, pesan: newWordMsg }]);
+    if(!error) { setNewWordTo(""); setNewWordMsg(""); setShowWordModal(false); reloadWords(); alert("Pesan terkirim!"); }
+    else { alert("Gagal kirim pesan"); }
   };
   
   const handleAddSong = async (e) => { 
-      e.preventDefault(); if(!newSongData.title || !newSongData.spotifyId) return; 
-      try { await axios.post(`${API_URL}/playlist`, { song_title: newSongData.title, artist: newSongData.artist, spotify_id: newSongData.spotifyId, requested_by: newSongData.requestedBy }); setNewSongData({ title: '', artist: '', spotifyId: '', requestedBy: '' }); setShowMusicModal(false); reloadPlaylist(); alert("Lagu direquest!"); } catch (e) { alert("Error"); } 
+      e.preventDefault(); 
+      if(!newSongData.title || !newSongData.spotifyId) return; 
+      const { error } = await supabase.from('playlist').insert([{ 
+          song_title: newSongData.title, 
+          artist: newSongData.artist, 
+          spotify_id: newSongData.spotifyId,
+          requested_by: newSongData.requestedBy
+      }]);
+      if(!error) { setNewSongData({ title: '', artist: '', spotifyId: '', requestedBy: '' }); setShowMusicModal(false); reloadPlaylist(); alert("Lagu direquest!"); }
+      else { alert("Gagal request lagu"); }
   };
 
   const searchMusic = (platform) => {
       const query = encodeURIComponent(`${newSongData.title} ${newSongData.artist}`);
-      if (!newSongData.title) return alert("Isi Judul lagu dulu biar pencariannya akurat!");
+      if (!newSongData.title) return alert("Isi Judul lagu dulu!");
       if (platform === 'spotify') window.open(`https://open.spotify.com/search/${query}`, '_blank');
       else window.open(`https://www.youtube.com/results?search_query=${query}`, '_blank');
   };
@@ -301,11 +379,12 @@ const Home = () => {
                 <button onClick={() => scrollToSection('journey')} className="hover:text-yellow-500 transition">Journey</button>
                 <button onClick={() => scrollToSection('flashback')} className="hover:text-yellow-500 transition">Flashback</button>
             </div>
-            <Link to="/login" className="bg-yellow-500/10 border border-yellow-500/50 text-yellow-500 px-4 py-1.5 rounded-full font-bold text-[10px] hover:bg-yellow-500 hover:text-black transition duration-300">ADMIN 🔒</Link>
+            {/* Tombol Admin DIHAPUS sesuai request */}
+            <div className="w-8"></div> 
         </div>
       </nav>
 
-      {/* INTRO */}
+      {/* INTRO SCREEN */}
       {showIntro && (
         <div className={`fixed inset-0 z-[9999] bg-[#020a1a] flex flex-col items-center justify-center text-center p-4 transition-all duration-1000 ${animateExit ? 'opacity-0 scale-110' : 'opacity-100'}`}>
            <div className="mb-8 relative animate-float">
@@ -319,7 +398,7 @@ const Home = () => {
         </div>
       )}
 
-      {/* HERO */}
+      {/* HERO SECTION */}
       <header id="hero" className="text-center pt-32 pb-16 px-4 relative overflow-hidden z-10">
           <div className="relative z-10 flex flex-col items-center justify-center mb-8 group animate-fade-in-up">
              <div className="relative w-32 h-32 md:w-44 md:h-44 rounded-full bg-[#0a1529] border-4 border-yellow-500/50 shadow-[0_0_60px_rgba(234,179,8,0.4)] flex items-center justify-center animate-float group-hover:scale-105 transition duration-500 overflow-hidden"><img src="https://via.placeholder.com/200/FFD700/000000?text=LOGO" alt="Logo" className="w-full h-full object-cover p-2 rounded-full opacity-90 group-hover:opacity-100 transition"/></div>
@@ -348,13 +427,13 @@ const Home = () => {
         <div className="relative bg-[#0a192f]/80 backdrop-blur-xl border border-yellow-500/30 rounded-2xl p-8 flex flex-col md:flex-row items-center gap-8 shadow-[0_0_30px_rgba(234,179,8,0.1)] hover:shadow-[0_0_50px_rgba(234,179,8,0.3)] transition duration-500 group">
             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-yellow-500 text-black px-6 py-1 font-bold tracking-widest text-xs rounded-full uppercase shadow-lg">Wali Kelas</div>
             <div className="w-40 h-40 md:w-48 md:h-48 shrink-0 rounded-full border-4 border-yellow-500 overflow-hidden shadow-2xl group-hover:scale-105 transition duration-500">
-                {wali && wali.foto_url ? (<img src={`${API_URL}/uploads/${wali.foto_url}`} alt="Guru" className="w-full h-full object-cover object-top"/>) : (<div className="w-full h-full bg-gray-800 flex items-center justify-center text-xs">NO FOTO</div>)}
+                {wali && wali.foto_url ? (<img src={`${STORAGE_URL}/${wali.foto_url}`} alt="Guru" className="w-full h-full object-cover object-top"/>) : (<div className="w-full h-full bg-gray-800 flex items-center justify-center text-xs">NO FOTO</div>)}
             </div>
             <div className="text-center md:text-left"><h2 className="text-3xl font-serif text-white font-bold mb-2 group-hover:text-yellow-400 transition">Bapak/Ibu Guru</h2><p className="text-yellow-500 mb-4 font-bold tracking-widest">{wali ? wali.nama : 'Loading...'}</p><blockquote className="text-gray-300 italic text-sm md:text-base border-l-4 border-yellow-500/30 pl-4">"{wali ? wali.quote : 'Loading...'}"</blockquote></div>
         </div>
       </section>
 
-      {/* GRID SISWA (TEKNIK SMART FIT / INSTA-FIT) */}
+      {/* GRID SISWA */}
       <div id="students" className="max-w-xl mx-auto px-6 mb-12 sticky top-20 z-40">
         <div className="relative group">
             <div className="absolute -inset-1 bg-gradient-to-r from-yellow-600 to-yellow-400 rounded-full blur opacity-25 group-hover:opacity-75 transition duration-1000"></div>
@@ -365,51 +444,25 @@ const Home = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 px-6 md:px-16 pb-20 relative z-10">
         {students.filter((val) => { if (searchTerm === "") return val; else if (val.nama.toLowerCase().includes(searchTerm.toLowerCase())) return val; return null; }).map((student) => (
             <div key={student.id} className="bg-[#0a192f] rounded-xl overflow-hidden border border-white/5 hover:border-yellow-500 transition duration-500 hover:-translate-y-3 hover:shadow-[0_0_30px_rgba(234,179,8,0.3)] group relative flex flex-col">
-                
-                {/* --- TEKNIK SMART FIT: BACKGROUND BLUR + FOTO UTUH --- */}
                 <div className="h-80 w-full relative overflow-hidden bg-black">
                     {student.foto_url ? (
-                        <>
-                            {/* Layer 1: Background Blur (Mengisi ruang kosong) */}
-                            <div 
-                                className="absolute inset-0 bg-cover bg-center blur-xl opacity-60 scale-110"
-                                style={{ backgroundImage: `url(${API_URL}/uploads/${student.foto_url})` }}
-                            ></div>
-                            
-                            {/* Layer 2: Foto Asli (Utuh / Contain) */}
-                            <img 
-                                src={`${API_URL}/uploads/${student.foto_url}`} 
-                                alt={student.nama} 
-                                className="relative w-full h-full object-contain z-10 transition-transform duration-500 group-hover:scale-105"
-                            />
-                        </>
-                    ) : (
-                        <div className="w-full h-full bg-gray-800 flex items-center justify-center text-xs text-gray-500">NO PHOTO</div>
-                    )}
-                    
+                        <>{/* Layer 1: Background Blur */}<div className="absolute inset-0 bg-cover bg-center blur-xl opacity-60 scale-110" style={{ backgroundImage: `url(${STORAGE_URL}/${student.foto_url})` }}></div>
+                        {/* Layer 2: Foto Asli */}<img src={`${STORAGE_URL}/${student.foto_url}`} alt={student.nama} className="relative w-full h-full object-contain z-10 transition-transform duration-500 group-hover:scale-105"/></>
+                    ) : (<div className="w-full h-full bg-gray-800 flex items-center justify-center text-xs text-gray-500">NO PHOTO</div>)}
                     <div className="absolute top-3 right-3 z-20"><span className="bg-yellow-500 text-black text-[10px] font-bold px-3 py-1 rounded-full uppercase shadow-lg transform scale-90 group-hover:scale-100 transition">{student.jabatan}</span></div>
                 </div>
-
-                <div className="p-6 relative z-20 bg-[#0a192f]">
-                    <h2 className="text-xl font-serif font-bold text-white mb-1 truncate group-hover:text-yellow-400 transition">{student.nama}</h2>
-                    {student.instagram ? (<a href={`https://instagram.com/${student.instagram.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="text-gray-400 text-xs mb-3 flex items-center gap-2 hover:text-white transition group/link"><span className="group-hover/link:animate-spin">📸</span> {student.instagram}</a>) : (<p className="text-gray-600 text-xs mb-3">-</p>)}
-                    <div className="w-full h-[1px] bg-white/10 mt-3 group-hover:bg-yellow-500/50 transition"></div>
-                </div>
+                <div className="p-6 relative z-20 bg-[#0a192f]"><h2 className="text-xl font-serif font-bold text-white mb-1 truncate group-hover:text-yellow-400 transition">{student.nama}</h2>{student.instagram ? (<a href={`https://instagram.com/${student.instagram.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="text-gray-400 text-xs mb-3 flex items-center gap-2 hover:text-white transition group/link"><span className="group-hover/link:animate-spin">📸</span> {student.instagram}</a>) : (<p className="text-gray-600 text-xs mb-3">-</p>)}<div className="w-full h-[1px] bg-white/10 mt-3 group-hover:bg-yellow-500/50 transition"></div></div>
             </div>
         ))}
       </div>
 
-      {/* CAPTURED MOMENTS (LIGHTBOX) */}
+      {/* CAPTURED MOMENTS */}
       <section id="gallery" className="mb-0 pb-0 overflow-hidden relative z-10">
         <div className="text-center mb-8"><h3 className="text-yellow-500 font-serif text-2xl tracking-[0.2em] uppercase">Captured Moments</h3></div>
         <div className="border-t-4 border-b-4 border-yellow-600 bg-black/50 py-8 rotate-1 shadow-2xl mb-12 overflow-hidden backdrop-blur-sm">
             <div className="animate-scroll flex gap-8">
                 {gallery.length === 0 ? (<div className="w-full text-center text-gray-500 py-10 min-w-full">Belum ada foto kenangan. Upload di Admin!</div>) : ([...gallery, ...gallery, ...gallery].map((item, index) => (
-                    // ONCLICK LIGHTBOX
-                    <div key={index} onClick={() => setSelectedImage(item)} className="w-72 h-48 shrink-0 rounded-lg overflow-hidden border-2 border-white/20 relative group cursor-pointer hover:border-yellow-500 transition duration-300 hover:scale-105 shadow-xl">
-                        <img src={`${API_URL}/uploads/${item.image_url}`} alt={item.caption} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition duration-700"/>
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition duration-300 flex items-center justify-center"><p className="text-white text-xs font-bold uppercase tracking-wider px-2 text-center transform translate-y-4 group-hover:translate-y-0 transition duration-500">🔍 Lihat Foto</p></div>
-                    </div>
+                    <div key={index} onClick={() => setSelectedImage(item)} className="w-72 h-48 shrink-0 rounded-lg overflow-hidden border-2 border-white/20 relative group cursor-pointer hover:border-yellow-500 transition duration-300 hover:scale-105 shadow-xl"><img src={`${STORAGE_URL}/${item.image_url}`} alt={item.caption} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition duration-700"/><div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition duration-300 flex items-center justify-center"><p className="text-white text-xs font-bold uppercase tracking-wider px-2 text-center transform translate-y-4 group-hover:translate-y-0 transition duration-500">🔍 Lihat Foto</p></div></div>
                 )))}
             </div>
         </div>
@@ -423,7 +476,7 @@ const Home = () => {
 
       {/* FLASHBACK */}
       <section id="flashback" className="py-24 px-4 overflow-hidden relative z-10">
-        <div className="max-w-7xl mx-auto"><div className="flex flex-col items-center mb-16 relative z-10"><h3 className="text-5xl md:text-7xl font-serif font-bold text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-800 opacity-80 tracking-tighter animate-float">FLASHBACK</h3><p className="text-white/40 text-sm tracking-[0.5em] uppercase -mt-4 bg-[#051125] px-4">Hover to Reveal</p></div><div className="flex flex-col md:flex-row gap-4 h-[600px] w-full">{flashback.map((item) => (<div key={item.id} className="group relative flex-1 hover:flex-[3] transition-all duration-700 ease-in-out rounded-3xl overflow-hidden border border-white/10 hover:border-yellow-500 shadow-2xl cursor-pointer bg-black" onMouseEnter={duckVolume} onMouseLeave={restoreVolume}><div className="absolute inset-0 bg-black/60 group-hover:bg-transparent z-10 transition duration-500 pointer-events-none"></div><video className="absolute inset-0 w-full h-full object-cover opacity-50 grayscale group-hover:opacity-100 group-hover:grayscale-0 transition duration-700 scale-[1.3] group-hover:scale-100" autoPlay muted loop playsInline controls={false} onMouseEnter={(e) => { e.target.muted = false; }} onMouseLeave={(e) => { e.target.muted = true; }}><source src={`${API_URL}/uploads/${item.video_url}`} type="video/mp4" /></video><div className="absolute bottom-0 left-0 w-full p-8 bg-gradient-to-t from-black via-black/80 to-transparent translate-y-full group-hover:translate-y-0 transition duration-500 z-20 pointer-events-none"><h4 className="text-white font-serif text-2xl font-bold mb-1">{item.title}</h4><p className="text-yellow-500 text-xs tracking-widest uppercase">{item.description}</p></div></div>))}</div></div>
+        <div className="max-w-7xl mx-auto"><div className="flex flex-col items-center mb-16 relative z-10"><h3 className="text-5xl md:text-7xl font-serif font-bold text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-800 opacity-80 tracking-tighter animate-float">FLASHBACK</h3><p className="text-white/40 text-sm tracking-[0.5em] uppercase -mt-4 bg-[#051125] px-4">Hover to Reveal</p></div><div className="flex flex-col md:flex-row gap-4 h-[600px] w-full">{flashback.map((item) => (<div key={item.id} className="group relative flex-1 hover:flex-[3] transition-all duration-700 ease-in-out rounded-3xl overflow-hidden border border-white/10 hover:border-yellow-500 shadow-2xl cursor-pointer bg-black" onMouseEnter={duckVolume} onMouseLeave={restoreVolume}><div className="absolute inset-0 bg-black/60 group-hover:bg-transparent z-10 transition duration-500 pointer-events-none"></div><video className="absolute inset-0 w-full h-full object-cover opacity-50 grayscale group-hover:opacity-100 group-hover:grayscale-0 transition duration-700 scale-[1.3] group-hover:scale-100" autoPlay muted loop playsInline controls={false} onMouseEnter={(e) => { e.target.muted = false; }} onMouseLeave={(e) => { e.target.muted = true; }}><source src={`${STORAGE_URL}/${item.video_url}`} type="video/mp4" /></video><div className="absolute bottom-0 left-0 w-full p-8 bg-gradient-to-t from-black via-black/80 to-transparent translate-y-full group-hover:translate-y-0 transition duration-500 z-20 pointer-events-none"><h4 className="text-white font-serif text-2xl font-bold mb-1">{item.title}</h4><p className="text-yellow-500 text-xs tracking-widest uppercase">{item.description}</p></div></div>))}</div></div>
       </section>
 
       {/* SIGNATURE WALL */}
@@ -445,29 +498,18 @@ const Home = () => {
           <div className="mt-12 text-center border-t border-white/5 pt-8"><p className="text-white/20 text-xs tracking-[0.3em] uppercase">See You On Top</p></div>
       </footer>
 
-      {/* --- LIGHTBOX MODAL (POPUP GAMBAR) --- */}
+      {/* --- LIGHTBOX MODAL --- */}
       {selectedImage && (
-        <div 
-            className="fixed inset-0 z-[10000] bg-black/95 flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in" 
-            onClick={() => setSelectedImage(null)} // Klik luar untuk tutup
-        >
-           {/* Tombol Close */}
+        <div className="fixed inset-0 z-[10000] bg-black/95 flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in" onClick={() => setSelectedImage(null)}>
            <button onClick={() => setSelectedImage(null)} className="absolute top-6 right-6 text-white/50 hover:text-white text-5xl transition z-50">×</button>
-           
            <div className="max-w-5xl w-full max-h-screen p-4 relative flex flex-col items-center animate-zoom-in" onClick={(e) => e.stopPropagation()}>
-               <div className="relative shadow-[0_0_50px_rgba(255,255,255,0.1)] rounded-lg overflow-hidden border border-white/10">
-                   <img src={`${API_URL}/uploads/${selectedImage.image_url}`} className="max-w-full max-h-[80vh] object-contain" alt="Full Preview" />
-               </div>
-               {selectedImage.caption && (
-                   <p className="text-center text-white text-lg font-serif italic mt-6 bg-black/50 px-6 py-2 rounded-full border border-white/10">
-                       "{selectedImage.caption}"
-                   </p>
-               )}
+               <div className="relative shadow-[0_0_50px_rgba(255,255,255,0.1)] rounded-lg overflow-hidden border border-white/10"><img src={`${STORAGE_URL}/${selectedImage.image_url}`} className="max-w-full max-h-[80vh] object-contain" alt="Full Preview" /></div>
+               {selectedImage.caption && (<p className="text-center text-white text-lg font-serif italic mt-6 bg-black/50 px-6 py-2 rounded-full border border-white/10">"{selectedImage.caption}"</p>)}
            </div>
         </div>
       )}
 
-      {/* MODALS LAINNYA */}
+      {/* MODALS */}
       {showSigModal && (<div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in-up"><div className="bg-[#0f2545] p-8 rounded-2xl border border-white/10 w-full max-w-md shadow-2xl relative"><button onClick={() => setShowSigModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl">✕</button><h3 className="text-2xl font-bold text-yellow-500 mb-2 font-serif">Tinggalkan Jejak!</h3><form onSubmit={handleAddSignature} className="space-y-4"><input type="text" value={newSigName} onChange={(e) => setNewSigName(e.target.value)} placeholder="Ketik namamu..." maxLength={15} autoFocus className="w-full bg-[#0a192f] text-white p-4 rounded-lg border border-white/10 focus:border-yellow-500 outline-none text-center text-xl font-bold" /><button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded-lg hover:shadow-lg hover:scale-105 transition">Tempel di Dinding 📌</button></form></div></div>)}
       {showWordModal && (<div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in-up"><div className="bg-[#0f2545] p-8 rounded-2xl border border-white/10 w-full max-w-md shadow-2xl relative"><button onClick={() => setShowWordModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl">✕</button><h3 className="text-2xl font-bold text-yellow-500 mb-2 font-serif">Titip Pesan</h3><form onSubmit={handleAddWord} className="space-y-4"><input type="text" value={newWordTo} onChange={(e) => setNewWordTo(e.target.value)} placeholder="Untuk Siapa? (Boleh Kosong)" className="w-full bg-[#0a192f] text-white p-3 rounded-lg border border-white/10 focus:border-yellow-500 outline-none" /><textarea value={newWordMsg} onChange={(e) => setNewWordMsg(e.target.value)} placeholder="Pesanmu..." rows="4" className="w-full bg-[#0a192f] text-white p-3 rounded-lg border border-white/10 focus:border-yellow-500 outline-none resize-none" required /><button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded-lg hover:scale-105 transition">Kirim Pesan 💌</button></form></div></div>)}
       {showMusicModal && (<div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in-up"><div className="bg-[#0f2545] p-8 rounded-2xl border border-white/10 w-full max-w-md shadow-2xl relative"><button onClick={() => setShowMusicModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl">✕</button><h3 className="text-2xl font-bold text-yellow-500 mb-2 font-serif">Request Soundtrack</h3><form onSubmit={handleAddSong} className="space-y-3"><input type="text" placeholder="Nama Kamu" value={newSongData.requestedBy} onChange={e => setNewSongData({...newSongData, requestedBy: e.target.value})} className="w-full bg-[#0a192f] text-white p-3 rounded-lg border border-white/10 focus:border-yellow-500 outline-none" required /><div className="w-full h-[1px] bg-white/10 my-2"></div><input type="text" placeholder="Judul Lagu" value={newSongData.title} onChange={e => setNewSongData({...newSongData, title: e.target.value})} className="w-full bg-[#0a192f] text-white p-3 rounded-lg border border-white/10 focus:border-yellow-500 outline-none" required /><input type="text" placeholder="Nama Artis" value={newSongData.artist} onChange={e => setNewSongData({...newSongData, artist: e.target.value})} className="w-full bg-[#0a192f] text-white p-3 rounded-lg border border-white/10 focus:border-yellow-500 outline-none" required /><div className="flex gap-2 text-xs"><button type="button" onClick={() => searchMusic('spotify')} className="flex-1 bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white py-2 rounded transition border border-green-600/50">🔍 Cari di Spotify</button><button type="button" onClick={() => searchMusic('youtube')} className="flex-1 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white py-2 rounded transition border border-red-600/50">🔍 Cari di YouTube</button></div><input type="text" placeholder="Paste Link Spotify / YouTube..." value={newSongData.spotifyId} onChange={e => setNewSongData({...newSongData, spotifyId: e.target.value})} className="w-full bg-[#0a192f] text-white p-3 rounded-lg border border-white/10 focus:border-yellow-500 outline-none text-xs font-mono" required /><button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded-lg hover:scale-105 transition">Tambahkan ke Playlist 🎵</button></form></div></div>)}
