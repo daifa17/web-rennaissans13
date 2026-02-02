@@ -2,73 +2,66 @@ import React, { useState, useEffect, useRef } from 'react';
 import { TypeAnimation } from 'react-type-animation';
 import { supabase } from './supabaseClient'; 
 
-// --- 1. KOMPONEN PINTAR: VIDEO AUTOPLAY DENGAN SUARA ---
-const SmartVideo = ({ url, title }) => {
+// --- 1. KOMPONEN PINTAR: VIDEO (LOGIC TIKTOK STYLE) ---
+// Video ini melapor ke "pusat" kalau dia lagi dilihat, biar yang lain diam.
+const SmartVideo = ({ id, url, title, activeVideoId, setActiveVideoId }) => {
   const videoRef = useRef(null);
-  const [isMuted, setIsMuted] = useState(false); // Default: Ada Suara (False)
+  const [isMuted, setIsMuted] = useState(true);
+
+  // Cek apakah video ini yang harus bersuara?
+  useEffect(() => {
+    if (activeVideoId === id) {
+      setIsMuted(false); // Kalau saya aktif, nyalakan suara
+    } else {
+      setIsMuted(true); // Kalau bukan saya, bisukan
+    }
+  }, [activeVideoId, id]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (!videoRef.current) return;
 
+        // Logic Autoplay
         if (entry.isIntersecting) {
-          // Video masuk layar -> PLAY
-          const playPromise = videoRef.current.play();
+          videoRef.current.play().catch(() => {});
           
-          if (playPromise !== undefined) {
-            playPromise.catch(error => {
-              // Jika browser blokir suara, fallback ke Mute otomatis biar video tetap gerak
-              console.log("Autoplay suara diblokir, fallback ke mute.");
-              if (videoRef.current) {
-                videoRef.current.muted = true;
-                videoRef.current.play();
-                setIsMuted(true);
-              }
-            });
+          // Logic Fokus: Kalau video terlihat lebih dari 60% di layar,
+          // jadikan dia sebagai "Active Video" (biar dia doang yang bunyi)
+          if (entry.intersectionRatio > 0.6) {
+             setActiveVideoId(id);
           }
         } else {
-          // Video keluar layar -> PAUSE (Hemat Resource)
           videoRef.current.pause();
         }
       },
-      { threshold: 0.5 } // Aktif jika 50% video terlihat
+      { threshold: 0.7 } // Harus 70% terlihat baru dianggap "Fokus"
     );
 
     if (videoRef.current) observer.observe(videoRef.current);
     return () => observer.disconnect();
-  }, []);
+  }, [id, setActiveVideoId]);
 
   return (
-    <div className="min-w-[280px] md:min-w-[400px] aspect-video rounded-xl overflow-hidden border border-white/10 relative bg-black group shadow-lg">
+    <div className={`min-w-[280px] md:min-w-[400px] aspect-video rounded-xl overflow-hidden border relative bg-black group shadow-2xl mx-2 transition-all duration-500 ${activeVideoId === id ? 'border-yellow-500 scale-105 z-10' : 'border-white/10 scale-100 opacity-60'}`}>
       <video 
-        ref={videoRef}
-        src={url}
-        muted={isMuted}
-        loop
-        playsInline // Wajib buat iPhone
-        className="w-full h-full object-cover"
+        ref={videoRef} 
+        src={url} 
+        muted={isMuted} 
+        loop 
+        playsInline 
+        className="w-full h-full object-cover" 
       />
       
-      {/* Judul Video */}
+      {/* Judul */}
       <div className="absolute top-2 left-2 bg-black/60 px-3 py-1 rounded text-white text-xs font-bold border border-white/10 backdrop-blur-sm z-10">
         {title}
       </div>
 
-      {/* Tombol Mute/Unmute Manual */}
-      <button 
-        onClick={() => {
-            const newState = !isMuted;
-            setIsMuted(newState);
-            if(videoRef.current) videoRef.current.muted = newState;
-        }}
-        className="absolute bottom-4 right-4 bg-yellow-500 text-black w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-lg z-20 opacity-80 hover:opacity-100 transition"
-      >
+      {/* Indikator Suara */}
+      <div className="absolute bottom-4 right-4 bg-yellow-500 text-black w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-lg z-20 transition-all">
         {isMuted ? "🔇" : "🔊"}
-      </button>
-
-      {/* Overlay Gelap (Hilang pas di-hover) */}
-      <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition pointer-events-none"></div>
+      </div>
     </div>
   );
 };
@@ -127,10 +120,10 @@ const TimeCapsuleForm = () => {
 
   if (step === 'open') {
       return (
-        <div className="bg-[#0f1f3b] border border-white/10 p-8 rounded-2xl shadow-xl h-full flex flex-col relative">
+        <div className="bg-[#0f1f3b] border border-white/10 p-8 rounded-2xl shadow-xl h-full flex flex-col relative min-h-[400px]">
             <button onClick={() => {setStep('form'); setOpenResult(null);}} className="absolute top-4 left-4 text-gray-400 hover:text-white">← Kembali</button>
             {!openResult ? (
-                <div className="flex-1 flex flex-col justify-center">
+                <div className="flex-1 flex flex-col justify-center pt-10">
                     <h3 className="text-2xl font-bold text-yellow-500 mb-6 text-center">Buka Kapsul</h3>
                     <form onSubmit={handleOpenCapsule} className="space-y-4">
                         <input type="text" placeholder="Masukkan Kodemu..." value={inputKey} onChange={e => setInputKey(e.target.value)} className="w-full bg-black/30 border border-white/20 p-4 rounded-lg text-center text-xl font-bold text-white uppercase tracking-widest outline-none focus:border-yellow-500" required />
@@ -138,7 +131,7 @@ const TimeCapsuleForm = () => {
                     </form>
                 </div>
             ) : (
-                <div className="flex-1 flex flex-col justify-center text-center">
+                <div className="flex-1 flex flex-col justify-center text-center pt-10">
                     {openResult.status === 'Unlocked' ? (
                         <div className="animate-zoom-in">
                             <p className="text-gray-400 text-xs mb-2">Pesan dari masa lalu:</p>
@@ -160,7 +153,7 @@ const TimeCapsuleForm = () => {
   }
 
   return (
-    <div className="bg-white/5 backdrop-blur-md border border-white/10 p-8 rounded-2xl shadow-xl h-full flex flex-col">
+    <div className="bg-white/5 backdrop-blur-md border border-white/10 p-8 rounded-2xl shadow-xl h-full flex flex-col min-h-[400px]">
         <div className="flex justify-between items-center mb-6"><h4 className="font-bold text-white">Buat Kapsul Baru</h4><button onClick={() => setStep('open')} className="text-[10px] bg-white/10 px-3 py-1 rounded border border-white/20">PUNYA KODE?</button></div>
         <form onSubmit={handleLockMessage} className="space-y-4 flex-1 flex flex-col">
             <input type="text" placeholder="Namamu..." value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} required className="w-full bg-[#050b14]/80 border border-white/10 rounded-lg px-4 py-3 text-white outline-none focus:border-yellow-500" />
@@ -175,19 +168,22 @@ const TimeCapsuleForm = () => {
 
 // --- 3. KOMPONEN UTAMA HOME ---
 const Home = () => {
-  // GANTI PROJECT ID SUPABASE KAMU DI SINI
   const STORAGE_URL = 'https://fjagcvvlfaarxjitdbsy.supabase.co/storage/v1/object/public/public-files';
   
   const bgAudioRef = useRef(null);
+  const flashbackSectionRef = useRef(null); // Ref untuk section flashback
+  
   const [showIntro, setShowIntro] = useState(true);
   const [animateExit, setAnimateExit] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [contentLoaded, setContentLoaded] = useState(false); 
+  
+  // State untuk melacak video mana yang sedang aktif (bersuara)
+  const [activeVideoId, setActiveVideoId] = useState(null);
 
-  // --- AUDIO & INTRO LOGIC ---
   const handleEnterWebsite = () => {
     setAnimateExit(true);
-    setContentLoaded(true); // Baru render konten berat sekarang!
+    setContentLoaded(true);
     setTimeout(() => {
         setShowIntro(false);
         if (bgAudioRef.current) {
@@ -198,6 +194,32 @@ const Home = () => {
   };
 
   const stopBgMusic = () => { if (bgAudioRef.current) bgAudioRef.current.pause(); };
+
+  // --- LOGIC: AUDIO DUCKING (Backsound mengecil pas Flashback) ---
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+        ([entry]) => {
+            if (bgAudioRef.current) {
+                if (entry.isIntersecting) {
+                    // Masuk Flashback: Kecilin Volume Backsound
+                    console.log("Masuk Flashback: Volume Backsound Turun");
+                    bgAudioRef.current.volume = 0.1; 
+                } else {
+                    // Keluar Flashback: Volume Normal Lagi
+                    console.log("Keluar Flashback: Volume Backsound Naik");
+                    bgAudioRef.current.volume = 0.5;
+                    setActiveVideoId(null); // Reset video aktif biar gak ada yang bunyi
+                }
+            }
+        },
+        { threshold: 0.3 } // 30% section flashback masuk layar, trigger logic ini
+    );
+
+    if (flashbackSectionRef.current) {
+        observer.observe(flashbackSectionRef.current);
+    }
+    return () => observer.disconnect();
+  }, [contentLoaded]); // Jalankan ulang kalau konten sudah dimuat
 
   useEffect(() => {
     const handleScroll = () => { setScrolled(window.scrollY > 50); };
@@ -234,7 +256,6 @@ const Home = () => {
   const fonts = ['font-marker', 'font-rock', 'font-caveat', 'font-shadows', 'font-dancing', 'font-indie', 'font-gloria'];
   const colors = ['text-pink-400', 'text-yellow-400', 'text-cyan-400', 'text-green-400', 'text-purple-400', 'text-red-400', 'text-white'];
 
-  // --- LOAD DATA (SMART FETCHING PARALLEL) ---
   useEffect(() => {
     const fetchData = async () => {
         const [sData, wData, jData, pData, wdData, gData, fData, sigData] = await Promise.all([
@@ -272,7 +293,6 @@ const Home = () => {
     fetchData();
   }, []);
 
-  // --- HANDLERS ---
   const handleAddSignature = async (e) => { 
     e.preventDefault(); if(!newSigName.trim()) return; 
     const { error } = await supabase.from('signatures').insert([{ nama_pengirim: newSigName, pesan: "Signature Wall" }]);
@@ -292,7 +312,7 @@ const Home = () => {
   };
 
   return (
-    <div className="bg-[#051125] min-h-screen text-white font-sans relative overflow-x-hidden">
+    <div className="bg-[#051125] min-h-screen text-white font-sans relative overflow-x-hidden selection:bg-yellow-500 selection:text-black">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Dancing+Script:wght@700&family=Gloria+Hallelujah&family=Indie+Flower&family=Permanent+Marker&family=Rock+Salt&family=Shadows+Into+Light&display=swap');
         .font-marker { font-family: 'Permanent Marker', cursive; } .font-rock { font-family: 'Rock Salt', cursive; } .font-caveat { font-family: 'Caveat', cursive; } .font-shadows { font-family: 'Shadows Into Light', cursive; } .font-dancing { font-family: 'Dancing Script', cursive; } .font-indie { font-family: 'Indie Flower', cursive; } .font-gloria { font-family: 'Gloria Hallelujah', cursive; }
@@ -325,141 +345,155 @@ const Home = () => {
 
       {/* KONTEN UTAMA */}
       {contentLoaded && (
-        <>
-            {/* NAVBAR */}
-            <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-[#051125]/90 backdrop-blur-md shadow-lg py-3' : 'bg-transparent py-5'}`}>
+        <div className="relative z-10 flex flex-col min-h-screen">
+            
+            {/* NAVBAR (FIXED) */}
+            <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-[#051125]/95 backdrop-blur-md shadow-lg py-3' : 'bg-transparent py-5'}`}>
                 <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
-                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => scrollToSection('hero')}><span className="text-2xl">🎓</span><span className="font-serif font-bold text-yellow-500 tracking-widest text-lg">RENAISSANS</span></div>
+                    <div className="flex items-center gap-2 cursor-pointer" onClick={() => scrollToSection('hero')}>
+                        <span className="text-2xl">🎓</span>
+                        <span className="font-serif font-bold text-yellow-500 tracking-widest text-lg md:text-xl">RENAISSANS</span>
+                    </div>
                     <div className="hidden md:flex items-center gap-6 text-xs font-bold uppercase tracking-widest text-gray-300">
-                        <button onClick={() => scrollToSection('students')} className="hover:text-yellow-500">Siswa</button>
-                        <button onClick={() => scrollToSection('gallery')} className="hover:text-yellow-500">Gallery</button>
+                        <button onClick={() => scrollToSection('students')} className="hover:text-yellow-500 transition">Siswa</button>
+                        <button onClick={() => scrollToSection('gallery')} className="hover:text-yellow-500 transition">Gallery</button>
                     </div>
                 </div>
             </nav>
 
-            {/* HERO */}
-            <header id="hero" className="text-center pt-32 pb-16 px-4 relative z-10">
-                <div className="relative z-10 flex flex-col items-center justify-center mb-6 animate-fade-in-up">
-                    <div className="w-32 h-32 rounded-full bg-[#0a1529] border-4 border-yellow-500/50 flex items-center justify-center shadow-[0_0_40px_rgba(234,179,8,0.3)]"><img src="logo.png" alt="Logo" className="w-full h-full object-cover rounded-full opacity-90"/></div>
-                </div>
-                <h1 className="text-3xl md:text-6xl font-serif text-yellow-500 font-bold mb-4 tracking-wider animate-fade-in-up">
-                    <TypeAnimation sequence={['CLASS OF MEMORIES', 1000, 'FOREVER YOUNG', 1000]} wrapper="span" speed={50} repeat={Infinity} cursor={true}/>
-                </h1>
-            </header>
-
-            {/* WORDS UNSAID */}
-            <section id="words" className="max-w-6xl mx-auto px-6 mb-24 relative z-10 animate-fade-in-up">
-                <div className="text-center mb-10">
-                    <h3 className="text-yellow-500 font-serif text-2xl tracking-[0.2em] uppercase">Words Unsaid</h3>
-                    <button onClick={() => setShowWordModal(true)} className="mt-4 bg-yellow-500 text-black px-6 py-2 rounded-full font-bold text-xs uppercase tracking-wider">✉️ Titip Pesan</button>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {words.slice(0, 6).map((word) => (
-                        <div key={word.id} className="bg-[#112240]/80 p-5 rounded-lg border-l-4 border-yellow-500 hover:-translate-y-1 transition duration-300">
-                            <p className="text-gray-300 italic mb-2 text-sm line-clamp-3">"{word.pesan}"</p>
-                            <div className="flex justify-between items-center mt-2 border-t border-white/5 pt-2"><span className="text-white text-xs font-bold">To: {word.untuk}</span></div>
-                        </div>
-                    ))}
-                </div>
-            </section>
-
-            {/* GURU */}
-            <section className="max-w-4xl mx-auto mb-16 px-6 relative z-10">
-                <div className="bg-[#0a192f]/80 backdrop-blur border border-yellow-500/30 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-6 shadow-lg">
-                    <div className="w-32 h-32 shrink-0 rounded-full border-4 border-yellow-500 overflow-hidden">
-                        {wali && wali.foto_url ? (<img src={`${STORAGE_URL}/${wali.foto_url}`} loading="lazy" alt="Guru" className="w-full h-full object-cover"/>) : (<div className="w-full h-full bg-gray-800 flex items-center justify-center text-xs">NO FOTO</div>)}
+            {/* MAIN CONTENT WRAPPER */}
+            <main className="flex-grow">
+                {/* HERO */}
+                <header id="hero" className="text-center pt-32 pb-16 px-4 relative z-10">
+                    <div className="relative z-10 flex flex-col items-center justify-center mb-6 animate-fade-in-up">
+                        <div className="w-32 h-32 rounded-full bg-[#0a1529] border-4 border-yellow-500/50 flex items-center justify-center shadow-[0_0_40px_rgba(234,179,8,0.3)]"><img src="logo.png" alt="Logo" className="w-full h-full object-cover rounded-full opacity-90"/></div>
                     </div>
-                    <div className="text-center md:text-left"><h2 className="text-2xl font-serif text-white font-bold mb-1">Bapak/Ibu Guru</h2><p className="text-yellow-500 mb-2 font-bold tracking-widest">{wali ? wali.nama : 'Loading...'}</p><blockquote className="text-gray-300 italic text-sm border-l-4 border-yellow-500/30 pl-4">"{wali ? wali.quote : 'Loading...'}"</blockquote></div>
-                </div>
-            </section>
+                    <h1 className="text-3xl md:text-6xl font-serif text-yellow-500 font-bold mb-4 tracking-wider animate-fade-in-up">
+                        <TypeAnimation sequence={['CLASS OF MEMORIES', 1000, 'FOREVER YOUNG', 1000]} wrapper="span" speed={50} repeat={Infinity} cursor={true}/>
+                    </h1>
+                </header>
 
-            {/* SISWA GRID */}
-            <div id="students" className="max-w-xl mx-auto px-6 mb-8 sticky top-20 z-40">
-                <input type="text" placeholder="Cari teman..." className="w-full bg-[#0f2545]/90 border border-white/10 rounded-full py-3 px-6 text-white outline-none focus:border-yellow-500 shadow-xl text-sm" onChange={(e) => setSearchTerm(e.target.value)} />
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 px-4 md:px-12 pb-20 relative z-10">
-                {students.filter((val) => { if (searchTerm === "") return val; else if (val.nama.toLowerCase().includes(searchTerm.toLowerCase())) return val; return null; }).map((student) => (
-                    <div key={student.id} className="bg-[#0a192f] rounded-lg overflow-hidden border border-white/5 hover:border-yellow-500 transition duration-300 hover:-translate-y-2 hover:shadow-lg group">
-                        <div className="h-48 w-full relative overflow-hidden bg-gray-900">
-                            {student.foto_url ? (
-                                <img src={`${STORAGE_URL}/${student.foto_url}`} loading="lazy" alt={student.nama} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"/>
-                            ) : (<div className="w-full h-full flex items-center justify-center text-[10px] text-gray-500">NO PHOTO</div>)}
-                            <div className="absolute top-2 right-2"><span className="bg-yellow-500 text-black text-[9px] font-bold px-2 py-1 rounded shadow">{student.jabatan}</span></div>
-                        </div>
-                        <div className="p-3 bg-[#0a192f]"><h2 className="text-sm font-bold text-white mb-1 truncate">{student.nama}</h2>{student.instagram && <p className="text-gray-500 text-[10px] truncate">@{student.instagram.replace('@','')}</p>}</div>
+                {/* WORDS UNSAID */}
+                <section id="words" className="max-w-6xl mx-auto px-6 mb-24 relative z-10 animate-fade-in-up">
+                    <div className="text-center mb-10">
+                        <h3 className="text-yellow-500 font-serif text-2xl tracking-[0.2em] uppercase">Words Unsaid</h3>
+                        <button onClick={() => setShowWordModal(true)} className="mt-4 bg-yellow-500 text-black px-6 py-2 rounded-full font-bold text-xs uppercase tracking-wider hover:bg-yellow-400 transition">✉️ Titip Pesan</button>
                     </div>
-                ))}
-            </div>
-
-            {/* GALLERY */}
-            <section id="gallery" className="mb-12 overflow-hidden relative z-10">
-                <div className="text-center mb-6"><h3 className="text-yellow-500 font-serif text-xl tracking-[0.2em] uppercase">Captured Moments</h3></div>
-                <div className="bg-black/30 py-6 overflow-hidden">
-                    <div className="animate-scroll flex gap-4 pl-4">
-                        {gallery.map((item, index) => (
-                            <div key={index} onClick={() => setSelectedImage(item)} className="w-48 h-32 shrink-0 rounded overflow-hidden border border-white/10 relative cursor-pointer hover:scale-105 transition"><img src={`${STORAGE_URL}/${item.image_url}`} loading="lazy" alt="Gallery" className="w-full h-full object-cover"/></div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {words.slice(0, 6).map((word) => (
+                            <div key={word.id} className="bg-[#112240]/80 p-5 rounded-lg border-l-4 border-yellow-500 hover:-translate-y-1 transition duration-300">
+                                <p className="text-gray-300 italic mb-2 text-sm line-clamp-3">"{word.pesan}"</p>
+                                <div className="flex justify-between items-center mt-2 border-t border-white/5 pt-2"><span className="text-white text-xs font-bold">To: {word.untuk}</span></div>
+                            </div>
                         ))}
                     </div>
+                </section>
+
+                {/* GURU */}
+                <section className="max-w-4xl mx-auto mb-16 px-6 relative z-10">
+                    <div className="bg-[#0a192f]/80 backdrop-blur border border-yellow-500/30 rounded-2xl p-6 flex flex-col md:flex-row items-center gap-6 shadow-lg">
+                        <div className="w-32 h-32 shrink-0 rounded-full border-4 border-yellow-500 overflow-hidden">
+                            {wali && wali.foto_url ? (<img src={`${STORAGE_URL}/${wali.foto_url}`} loading="lazy" alt="Guru" className="w-full h-full object-cover"/>) : (<div className="w-full h-full bg-gray-800 flex items-center justify-center text-xs">NO FOTO</div>)}
+                        </div>
+                        <div className="text-center md:text-left"><h2 className="text-2xl font-serif text-white font-bold mb-1">Bapak/Ibu Guru</h2><p className="text-yellow-500 mb-2 font-bold tracking-widest">{wali ? wali.nama : 'Loading...'}</p><blockquote className="text-gray-300 italic text-sm border-l-4 border-yellow-500/30 pl-4">"{wali ? wali.quote : 'Loading...'}"</blockquote></div>
+                    </div>
+                </section>
+
+                {/* SISWA GRID */}
+                <div id="students" className="max-w-xl mx-auto px-6 mb-8 sticky top-20 z-40">
+                    <input type="text" placeholder="Cari teman..." className="w-full bg-[#0f2545]/90 border border-white/10 rounded-full py-3 px-6 text-white outline-none focus:border-yellow-500 shadow-xl text-sm backdrop-blur-sm" onChange={(e) => setSearchTerm(e.target.value)} />
                 </div>
-            </section>
-
-            {/* OUR JOURNEY */}
-            <section id="journey" className="py-12 px-6 max-w-3xl mx-auto relative z-10">
-                <div className="text-center mb-10"><h3 className="text-yellow-500 font-serif text-xl tracking-widest uppercase">Our Journey</h3></div>
-                <div className="relative border-l-2 border-yellow-500/30 ml-4 space-y-8">{journey.map((item, index) => (<div key={item.id} className="relative pl-8"><div className="absolute top-1 -left-[7px] w-3 h-3 bg-yellow-500 rounded-full shadow border-2 border-[#051125]"></div><div className="bg-[#0a192f] p-4 rounded-lg border border-white/5 shadow"><h4 className="text-lg font-bold text-white">{item.judul}</h4><span className="text-xs text-yellow-500 uppercase tracking-widest block mb-2">{item.tahun}</span><p className="text-gray-400 text-sm">{item.deskripsi}</p></div></div>))}</div>
-            </section>
-
-            {/* FLASHBACK (SMART AUTOPLAY VIDEO) */}
-            <section id="flashback" className="py-12 px-4 relative z-10">
-                <div className="text-center mb-8"><h3 className="text-4xl font-serif font-bold text-yellow-500/80 tracking-tighter">FLASHBACK</h3></div>
-                <div className="flex flex-col md:flex-row gap-4 overflow-x-auto pb-4">
-                    {flashback.map((item) => (
-                        <SmartVideo 
-                            key={item.id} 
-                            url={`${STORAGE_URL}/${item.video_url}`} 
-                            title={item.title} 
-                        />
+                
+                <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 px-4 md:px-12 pb-20 relative z-10">
+                    {students.filter((val) => { if (searchTerm === "") return val; else if (val.nama.toLowerCase().includes(searchTerm.toLowerCase())) return val; return null; }).map((student) => (
+                        <div key={student.id} className="bg-[#0a192f] rounded-lg overflow-hidden border border-white/5 hover:border-yellow-500 transition duration-300 hover:-translate-y-2 hover:shadow-lg group">
+                            <div className="h-48 w-full relative overflow-hidden bg-gray-900">
+                                {student.foto_url ? (
+                                    <img src={`${STORAGE_URL}/${student.foto_url}`} loading="lazy" alt={student.nama} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"/>
+                                ) : (<div className="w-full h-full flex items-center justify-center text-[10px] text-gray-500">NO PHOTO</div>)}
+                                <div className="absolute top-2 right-2"><span className="bg-yellow-500 text-black text-[9px] font-bold px-2 py-1 rounded shadow">{student.jabatan}</span></div>
+                            </div>
+                            <div className="p-3 bg-[#0a192f]"><h2 className="text-sm font-bold text-white mb-1 truncate">{student.nama}</h2>{student.instagram && <p className="text-gray-500 text-[10px] truncate">@{student.instagram.replace('@','')}</p>}</div>
+                        </div>
                     ))}
                 </div>
-            </section>
 
-            {/* SIGNATURE WALL & JUKEBOX */}
-            <section className="py-16 px-6 bg-[#080d1a] relative z-10">
-                <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12">
-                    {/* Signature */}
-                    <div>
-                        <h3 className="text-yellow-500 font-serif text-xl tracking-widest uppercase mb-6 text-center">Signature Wall</h3>
-                        <div className="bg-[#0f1f3b] border border-white/10 rounded-xl p-6 h-[400px] relative overflow-hidden">
-                            <div className="h-full overflow-y-auto flex flex-wrap gap-6 justify-center content-start pb-12">
-                                {signatures.map((sign) => (<div key={sign.id} style={{ transform: `rotate(${sign.style?.rotation || '0deg'}) scale(${sign.style?.scale || 1})` }}><span className={`${sign.style?.font || 'font-marker'} text-2xl ${sign.style?.color || 'text-white'} opacity-90`}>{sign.nama_pengirim}</span></div>))}
-                            </div>
-                            <button onClick={() => setShowSigModal(true)} className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-yellow-500 text-black px-4 py-2 rounded-full font-bold text-sm shadow-lg">+ Add Yours</button>
+                {/* GALLERY */}
+                <section id="gallery" className="mb-12 overflow-hidden relative z-10">
+                    <div className="text-center mb-6"><h3 className="text-yellow-500 font-serif text-xl tracking-[0.2em] uppercase">Captured Moments</h3></div>
+                    <div className="bg-black/30 py-6 overflow-hidden">
+                        <div className="animate-scroll flex gap-4 pl-4">
+                            {gallery.map((item, index) => (
+                                <div key={index} onClick={() => setSelectedImage(item)} className="w-48 h-32 shrink-0 rounded overflow-hidden border border-white/10 relative cursor-pointer hover:scale-105 transition"><img src={`${STORAGE_URL}/${item.image_url}`} loading="lazy" alt="Gallery" className="w-full h-full object-cover"/></div>
+                            ))}
                         </div>
                     </div>
-                    {/* Jukebox */}
-                    <div>
-                        <h3 className="text-yellow-500 font-serif text-xl tracking-widest uppercase mb-6 text-center">Jukebox</h3>
-                        <div className="bg-[#0f1f3b] border border-white/10 rounded-xl p-6 h-[400px] flex flex-col">
-                            <div className="flex-1 overflow-y-auto space-y-3 mb-4 pr-2 custom-scrollbar">
-                                {playlist.map((item) => (
-                                    <div key={item.id} onClick={() => { stopBgMusic(); /* Logic play Spotify belum terpasang penuh */ }} className="flex items-center gap-3 bg-[#0a192f] p-3 rounded border border-white/5 cursor-pointer hover:bg-[#1a2e52]">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs ${item.source === 'youtube' ? 'bg-red-600' : 'bg-green-600'}`}>{item.source === 'youtube' ? '▶' : '🎵'}</div>
-                                        <div className="min-w-0"><h4 className="text-white text-sm font-bold truncate">{item.song_title}</h4><p className="text-gray-400 text-xs truncate">{item.artist}</p></div>
-                                    </div>
-                                ))}
+                </section>
+
+                {/* OUR JOURNEY */}
+                <section id="journey" className="py-12 px-6 max-w-3xl mx-auto relative z-10">
+                    <div className="text-center mb-10"><h3 className="text-yellow-500 font-serif text-xl tracking-widest uppercase">Our Journey</h3></div>
+                    <div className="relative border-l-2 border-yellow-500/30 ml-4 space-y-8">{journey.map((item, index) => (<div key={item.id} className="relative pl-8"><div className="absolute top-1 -left-[7px] w-3 h-3 bg-yellow-500 rounded-full shadow border-2 border-[#051125]"></div><div className="bg-[#0a192f] p-4 rounded-lg border border-white/5 shadow"><h4 className="text-lg font-bold text-white">{item.judul}</h4><span className="text-xs text-yellow-500 uppercase tracking-widest block mb-2">{item.tahun}</span><p className="text-gray-400 text-sm">{item.deskripsi}</p></div></div>))}</div>
+                </section>
+
+                {/* FLASHBACK (SECTION REF UNTUK AUDIO DUCKING) */}
+                <section id="flashback" ref={flashbackSectionRef} className="py-12 px-4 relative z-10 max-w-7xl mx-auto min-h-[400px]">
+                    <div className="text-center mb-8"><h3 className="text-4xl font-serif font-bold text-yellow-500/80 tracking-tighter">FLASHBACK</h3></div>
+                    {/* Horizontal Scroll Snap biar enak swipe-nya */}
+                    <div className="flex flex-col md:flex-row gap-6 overflow-x-auto pb-6 justify-center snap-x snap-mandatory">
+                        {flashback.map((item) => (
+                            <div key={item.id} className="snap-center">
+                                <SmartVideo 
+                                    id={item.id}
+                                    url={`${STORAGE_URL}/${item.video_url}`} 
+                                    title={item.title} 
+                                    activeVideoId={activeVideoId}
+                                    setActiveVideoId={setActiveVideoId}
+                                />
                             </div>
-                            <button onClick={() => setShowMusicModal(true)} className="w-full bg-green-600 text-white py-2 rounded font-bold text-sm">Request Lagu 🎵</button>
+                        ))}
+                    </div>
+                </section>
+
+                {/* SIGNATURE WALL & JUKEBOX */}
+                <section className="py-16 px-6 bg-[#080d1a] relative z-10">
+                    <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12">
+                        {/* Signature */}
+                        <div>
+                            <h3 className="text-yellow-500 font-serif text-xl tracking-widest uppercase mb-6 text-center">Signature Wall</h3>
+                            <div className="bg-[#0f1f3b] border border-white/10 rounded-xl p-6 h-[400px] relative overflow-hidden">
+                                <div className="h-full overflow-y-auto flex flex-wrap gap-6 justify-center content-start pb-12">
+                                    {signatures.map((sign) => (<div key={sign.id} style={{ transform: `rotate(${sign.style?.rotation || '0deg'}) scale(${sign.style?.scale || 1})` }}><span className={`${sign.style?.font || 'font-marker'} text-2xl ${sign.style?.color || 'text-white'} opacity-90`}>{sign.nama_pengirim}</span></div>))}
+                                </div>
+                                <button onClick={() => setShowSigModal(true)} className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-yellow-500 text-black px-4 py-2 rounded-full font-bold text-sm shadow-lg hover:bg-yellow-400 transition">+ Add Yours</button>
+                            </div>
+                        </div>
+                        {/* Jukebox */}
+                        <div>
+                            <h3 className="text-yellow-500 font-serif text-xl tracking-widest uppercase mb-6 text-center">Jukebox</h3>
+                            <div className="bg-[#0f1f3b] border border-white/10 rounded-xl p-6 h-[400px] flex flex-col">
+                                <div className="flex-1 overflow-y-auto space-y-3 mb-4 pr-2 custom-scrollbar">
+                                    {playlist.map((item) => (
+                                        <div key={item.id} onClick={() => { stopBgMusic(); }} className="flex items-center gap-3 bg-[#0a192f] p-3 rounded border border-white/5 cursor-pointer hover:bg-[#1a2e52] transition">
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs ${item.source === 'youtube' ? 'bg-red-600' : 'bg-green-600'}`}>{item.source === 'youtube' ? '▶' : '🎵'}</div>
+                                            <div className="min-w-0"><h4 className="text-white text-sm font-bold truncate">{item.song_title}</h4><p className="text-gray-400 text-xs truncate">{item.artist}</p></div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <button onClick={() => setShowMusicModal(true)} className="w-full bg-green-600 text-white py-2 rounded font-bold text-sm hover:bg-green-500 transition">Request Lagu 🎵</button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </section>
+                </section>
 
-            {/* TIME CAPSULE */}
-            <section className="py-16 px-6 relative z-10"><div className="max-w-4xl mx-auto"><h3 className="text-3xl font-serif font-bold text-white mb-6 text-center">Time Capsule</h3><TimeCapsuleForm /></div></section>
+                {/* TIME CAPSULE */}
+                <section className="py-16 px-6 relative z-10"><div className="max-w-4xl mx-auto"><h3 className="text-3xl font-serif font-bold text-white mb-6 text-center">Time Capsule</h3><TimeCapsuleForm /></div></section>
+            </main>
 
-            {/* FOOTER */}
-            <footer className="bg-[#020a1a] py-8 text-center text-gray-500 text-xs mt-12"><p>© 2024 Class of Memories</p></footer>
+            {/* FOOTER (Sekarang pasti muncul di bawah) */}
+            <footer className="bg-[#020a1a] py-8 text-center text-gray-500 text-xs border-t border-white/5 relative z-10 w-full">
+                <p>© 2024 Class of Memories | Built with ❤️</p>
+            </footer>
 
             {/* LIGHTBOX MODAL */}
             {selectedImage && (<div className="fixed inset-0 z-[10000] bg-black/95 flex items-center justify-center p-4" onClick={() => setSelectedImage(null)}><img src={`${STORAGE_URL}/${selectedImage.image_url}`} className="max-w-full max-h-[80vh] object-contain" alt="Preview" /></div>)}
@@ -468,7 +502,7 @@ const Home = () => {
             {showSigModal && (<div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"><div className="bg-[#0f2545] p-6 rounded-xl w-full max-w-sm relative"><button onClick={() => setShowSigModal(false)} className="absolute top-2 right-4 text-gray-400 text-xl">✕</button><h3 className="font-bold text-yellow-500 mb-4">Tanda Tangan</h3><form onSubmit={handleAddSignature} className="space-y-3"><input type="text" value={newSigName} onChange={(e) => setNewSigName(e.target.value)} placeholder="Namamu..." maxLength={15} className="w-full bg-[#0a192f] text-white p-3 rounded border border-white/10 outline-none" /><button type="submit" className="w-full bg-yellow-500 text-black font-bold py-2 rounded">Tempel 📌</button></form></div></div>)}
             {showWordModal && (<div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"><div className="bg-[#0f2545] p-6 rounded-xl w-full max-w-sm relative"><button onClick={() => setShowWordModal(false)} className="absolute top-2 right-4 text-gray-400 text-xl">✕</button><h3 className="font-bold text-yellow-500 mb-4">Titip Pesan</h3><form onSubmit={handleAddWord} className="space-y-3"><input type="text" value={newWordTo} onChange={(e) => setNewWordTo(e.target.value)} placeholder="Untuk Siapa?" className="w-full bg-[#0a192f] text-white p-3 rounded border border-white/10 outline-none" /><textarea value={newWordMsg} onChange={(e) => setNewWordMsg(e.target.value)} placeholder="Pesanmu..." rows="3" className="w-full bg-[#0a192f] text-white p-3 rounded border border-white/10 outline-none" required /><button type="submit" className="w-full bg-yellow-500 text-black font-bold py-2 rounded">Kirim 💌</button></form></div></div>)}
             {showMusicModal && (<div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"><div className="bg-[#0f2545] p-6 rounded-xl w-full max-w-sm relative"><button onClick={() => setShowMusicModal(false)} className="absolute top-2 right-4 text-gray-400 text-xl">✕</button><h3 className="font-bold text-yellow-500 mb-4">Request Lagu</h3><form onSubmit={handleAddSong} className="space-y-3"><input type="text" placeholder="Nama Kamu" value={newSongData.requestedBy} onChange={e => setNewSongData({...newSongData, requestedBy: e.target.value})} className="w-full bg-[#0a192f] text-white p-3 rounded border border-white/10 outline-none" required /><input type="text" placeholder="Judul Lagu" value={newSongData.title} onChange={e => setNewSongData({...newSongData, title: e.target.value})} className="w-full bg-[#0a192f] text-white p-3 rounded border border-white/10 outline-none" required /><input type="text" placeholder="Artis" value={newSongData.artist} onChange={e => setNewSongData({...newSongData, artist: e.target.value})} className="w-full bg-[#0a192f] text-white p-3 rounded border border-white/10 outline-none" /><input type="text" placeholder="Link Spotify/YouTube" value={newSongData.spotifyId} onChange={e => setNewSongData({...newSongData, spotifyId: e.target.value})} className="w-full bg-[#0a192f] text-white p-3 rounded border border-white/10 outline-none text-xs" required /><button type="submit" className="w-full bg-yellow-500 text-black font-bold py-2 rounded">Request 🎵</button></form></div></div>)}
-        </>
+        </div>
       )}
     </div>
   );
