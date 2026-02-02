@@ -3,19 +3,17 @@ import { TypeAnimation } from 'react-type-animation';
 import { Link } from 'react-router-dom';
 import { supabase } from './supabaseClient'; 
 
-// --- 1. KOMPONEN VIDEO PINTAR (Disesuaikan dengan Desain Kamu) ---
+// --- 1. KOMPONEN VIDEO PINTAR (FLASHBACK) ---
 const FlashbackItem = ({ item, activeVideoId, setActiveVideoId, STORAGE_URL }) => {
   const videoRef = useRef(null);
   const isActive = activeVideoId === item.id;
 
-  // Logic: Kalau video ini "Active", nyalakan suara. Kalau tidak, bisukan.
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.muted = !isActive;
     }
   }, [isActive]);
 
-  // Logic: Autoplay saat muncul di layar
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -34,22 +32,19 @@ const FlashbackItem = ({ item, activeVideoId, setActiveVideoId, STORAGE_URL }) =
   return (
     <div 
       className={`group relative flex-1 hover:flex-[3] transition-all duration-700 ease-in-out rounded-3xl overflow-hidden border border-white/10 hover:border-yellow-500 shadow-2xl cursor-pointer bg-black ${isActive ? 'flex-[3] border-yellow-500' : ''}`}
-      onMouseEnter={() => setActiveVideoId(item.id)} // Desktop: Hover buat nyalain suara
-      onMouseLeave={() => setActiveVideoId(null)}  // Desktop: Lepas mute
-      onClick={() => setActiveVideoId(isActive ? null : item.id)} // Mobile: Klik buat nyalain suara
+      onMouseEnter={() => setActiveVideoId(item.id)}
+      onMouseLeave={() => setActiveVideoId(null)}
+      onClick={() => setActiveVideoId(isActive ? null : item.id)}
     >
       <div className={`absolute inset-0 bg-black/60 z-10 transition duration-500 pointer-events-none ${isActive ? 'bg-transparent' : 'group-hover:bg-transparent'}`}></div>
-      
       <video 
         ref={videoRef}
         className={`absolute inset-0 w-full h-full object-cover opacity-50 grayscale transition duration-700 scale-[1.3] group-hover:scale-100 group-hover:opacity-100 group-hover:grayscale-0 ${isActive ? 'opacity-100 grayscale-0 scale-100' : ''}`}
         src={`${STORAGE_URL}/${item.video_url}`}
         loop 
         playsInline 
-        muted={!isActive} // Default Mute kecuali aktif
+        muted={!isActive}
       />
-
-      {/* Judul & Deskripsi */}
       <div className={`absolute bottom-0 left-0 w-full p-8 bg-gradient-to-t from-black via-black/80 to-transparent translate-y-full transition duration-500 z-20 pointer-events-none ${isActive ? 'translate-y-0' : 'group-hover:translate-y-0'}`}>
         <h4 className="text-white font-serif text-2xl font-bold mb-1">{item.title}</h4>
         <p className="text-yellow-500 text-xs tracking-widest uppercase">{item.description}</p>
@@ -175,11 +170,14 @@ const Home = () => {
   
   // --- STATES & REF ---
   const bgAudioRef = useRef(null);
-  const flashbackSectionRef = useRef(null); // Ref untuk section flashback (buat audio ducking)
+  const flashbackSectionRef = useRef(null); 
   const [showIntro, setShowIntro] = useState(true);
   const [animateExit, setAnimateExit] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [activeVideoId, setActiveVideoId] = useState(null); // Untuk tracking video mana yang bersuara
+  const [activeVideoId, setActiveVideoId] = useState(null); 
+  
+  // State baru untuk Deteksi Device
+  const [showDeviceAlert, setShowDeviceAlert] = useState(false);
 
   // --- LOGIKA AUDIO ---
   const handleEnterWebsite = () => {
@@ -193,31 +191,39 @@ const Home = () => {
     }, 1000);
   };
 
-  // Logika Audio Ducking (Volume turun saat di Flashback)
+  // Logika Audio Ducking
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (bgAudioRef.current) {
           if (entry.isIntersecting) {
-            console.log("Di Flashback: Volume Turun");
-            bgAudioRef.current.volume = 0.1; // Kecilkan volume background
+            bgAudioRef.current.volume = 0.1; 
           } else {
-            console.log("Keluar Flashback: Volume Normal");
-            bgAudioRef.current.volume = 0.5; // Normalkan volume
-            setActiveVideoId(null); // Matikan semua suara video
+            bgAudioRef.current.volume = 0.5; 
+            setActiveVideoId(null); 
           }
         }
       },
-      { threshold: 0.2 } // Trigger saat 20% section flashback terlihat
+      { threshold: 0.2 } 
     );
-
-    if (flashbackSectionRef.current) {
-        observer.observe(flashbackSectionRef.current);
-    }
+    if (flashbackSectionRef.current) observer.observe(flashbackSectionRef.current);
     return () => observer.disconnect();
   }, []);
 
   const stopBgMusic = () => { if (bgAudioRef.current) bgAudioRef.current.pause(); };
+
+  // --- LOGIKA DETEKSI DEVICE (BARU) ---
+  useEffect(() => {
+    // Cek lebar layar. Jika < 768px (Mobile/Tablet Portrait), tampilkan saran
+    const checkDevice = () => {
+      if (window.innerWidth < 768) {
+        setShowDeviceAlert(true);
+      }
+    };
+    
+    // Jalankan saat pertama kali load
+    checkDevice();
+  }, []);
 
   // --- NAVBAR SCROLL ---
   useEffect(() => {
@@ -288,7 +294,7 @@ const Home = () => {
     fetchData();
   }, []);
 
-  // --- HANDLERS (Sama seperti sebelumnya) ---
+  // --- HANDLERS ---
   const reloadWords = async () => { const { data } = await supabase.from('words_unsaid').select('*'); if(data) setWords(data); };
   const reloadPlaylist = async () => { const { data } = await supabase.from('playlist').select('*'); if(data) setPlaylist(data); };
   const reloadSignatures = async () => {
@@ -350,6 +356,29 @@ const Home = () => {
       </div>
       <audio ref={bgAudioRef} src="/backsound.mp3" loop />
 
+      {/* --- POP UP SARAN DEVICE (FITUR BARU) --- */}
+      {showDeviceAlert && (
+        <div className="fixed inset-0 z-[10001] bg-black/95 flex items-center justify-center p-6 backdrop-blur-md animate-fade-in-up">
+           <div className="bg-[#0f1f3b] border border-yellow-500/50 p-6 md:p-8 rounded-2xl max-w-sm w-full text-center shadow-[0_0_50px_rgba(234,179,8,0.2)] relative">
+              <div className="text-4xl mb-4 animate-bounce">💻 ↔️ 📱</div>
+              <h3 className="text-xl font-serif font-bold text-yellow-500 mb-2">Saran Tampilan</h3>
+              <p className="text-gray-300 text-sm mb-4 leading-relaxed">
+                 Website ini didesain sinematik. Untuk pengalaman terbaik:
+              </p>
+              <ul className="text-left text-xs text-gray-400 mb-6 space-y-3 bg-black/20 p-4 rounded-lg border border-white/5">
+                 <li className="flex items-center gap-2"><span className="text-green-500">✅</span> Buka di <b>Laptop / PC</b></li>
+                 <li className="flex items-center gap-2"><span className="text-green-500">✅</span> Atau aktifkan <b>"Situs Desktop"</b> di Browser HP kamu</li>
+              </ul>
+              <button 
+                onClick={() => setShowDeviceAlert(false)} 
+                className="w-full bg-yellow-500 text-black font-bold py-3 rounded-full hover:bg-yellow-400 transition transform hover:scale-105"
+              >
+                 Oke, Lanjut Masuk 🚀
+              </button>
+           </div>
+        </div>
+      )}
+
       {/* NAVBAR */}
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-[#051125]/80 backdrop-blur-md shadow-lg py-3 border-b border-white/5' : 'bg-transparent py-6'}`}>
         <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
@@ -362,7 +391,6 @@ const Home = () => {
                 <button onClick={() => scrollToSection('journey')} className="hover:text-yellow-500 transition">Journey</button>
                 <button onClick={() => scrollToSection('flashback')} className="hover:text-yellow-500 transition">Flashback</button>
             </div>
-            {/* Tombol Admin DIHAPUS sesuai request */}
             <div className="w-8"></div> 
         </div>
       </nav>
@@ -457,12 +485,11 @@ const Home = () => {
         <div className="relative border-l-2 border-yellow-500/30 ml-4 md:ml-1/2 space-y-12">{journey.map((item, index) => (<div key={item.id} className="relative pl-8 md:pl-0 group"><div className="absolute top-0 -left-[9px] md:left-1/2 md:-ml-[9px] w-5 h-5 bg-yellow-500 rounded-full shadow-[0_0_15px_rgba(234,179,8,0.8)] border-4 border-[#051125] group-hover:scale-125 transition duration-300 z-20"></div><div className={`md:w-1/2 ${index % 2 === 0 ? 'md:pr-12 md:text-right md:ml-0' : 'md:ml-auto md:pl-12'}`}><span className={`text-yellow-500 font-bold text-6xl opacity-10 absolute -top-10 z-0 group-hover:opacity-30 transition duration-500 ${index % 2 === 0 ? 'left-0 md:right-10' : 'left-10'}`}>{index + 1}</span><div className="relative z-10 bg-[#0a192f] p-6 rounded-xl border border-white/5 hover:border-yellow-500/50 transition duration-300 shadow-lg hover:shadow-[0_0_20px_rgba(234,179,8,0.1)] hover:-translate-y-1"><h4 className="text-xl font-bold text-white mb-2">{item.judul}</h4><span className="text-xs text-yellow-500 uppercase tracking-widest mb-4 block">{item.tahun}</span><p className="text-gray-400 text-sm leading-relaxed">{item.deskripsi}</p></div></div></div>))}</div>
       </section>
 
-      {/* FLASHBACK (DENGAN SMART AUTOPLAY & DUCKING) */}
+      {/* FLASHBACK */}
       <section id="flashback" ref={flashbackSectionRef} className="py-24 px-4 overflow-hidden relative z-10">
         <div className="max-w-7xl mx-auto">
             <div className="flex flex-col items-center mb-16 relative z-10"><h3 className="text-5xl md:text-7xl font-serif font-bold text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-800 opacity-80 tracking-tighter animate-float">FLASHBACK</h3><p className="text-white/40 text-sm tracking-[0.5em] uppercase -mt-4 bg-[#051125] px-4">Hover/Click to Unmute</p></div>
             
-            {/* Horizontal Flex Expand Layout (Original Design) */}
             <div className="flex flex-col md:flex-row gap-4 h-[600px] w-full">
                 {flashback.map((item) => (
                     <FlashbackItem 
