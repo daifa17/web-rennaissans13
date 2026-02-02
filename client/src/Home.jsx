@@ -2,7 +2,66 @@ import React, { useState, useEffect, useRef } from 'react';
 import { TypeAnimation } from 'react-type-animation';
 import { supabase } from './supabaseClient'; 
 
-// --- 1. KOMPONEN VIDEO PINTAR (FLASHBACK) ---
+// --- KOMPONEN NOTICE BOARD (FITUR BARU) ---
+const NoticeBoard = () => {
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchEvents = async () => {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        
+        // Ambil event yang tanggalnya HARI INI atau MASA DEPAN (yang lewat tidak ditampilkan)
+        const { data, error } = await supabase
+          .from('events')
+          .select('*')
+          .gte('event_date', today) // gte = greater than or equal (>= hari ini)
+          .eq('is_active', true)
+          .order('event_date', { ascending: true })
+          .limit(5);
+
+        if (error) throw error;
+        setEvents(data || []);
+      } catch (err) {
+        console.error("Gagal ambil event:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchEvents();
+  }, []);
+
+  if (loading || events.length === 0) return null;
+
+  return (
+    <div className="bg-yellow-500 text-black overflow-hidden py-2 relative z-40 border-b border-black/20 shadow-lg">
+      <div className="flex animate-scroll whitespace-nowrap gap-12 items-center">
+        {/* Duplikat array agar scrolling terlihat infinity/nyambung */}
+        {[...events, ...events, ...events].map((ev, idx) => {
+          const dateObj = new Date(ev.event_date);
+          const dateStr = dateObj.toLocaleDateString('id-ID', { day: 'numeric', month: 'long' });
+          
+          let icon = '📢';
+          if (ev.type === 'birthday') icon = '🎂';
+          if (ev.type === 'holiday') icon = '🌴';
+
+          return (
+            <div key={`${ev.id}-${idx}`} className="flex items-center gap-2 font-bold uppercase tracking-wider text-xs md:text-sm">
+              <span className="text-lg">{icon}</span>
+              <span className="bg-black/10 px-2 rounded text-[10px]">{dateStr}</span>
+              <span>{ev.title}</span>
+              <span className="mx-4 text-black/30">|</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// --- KOMPONEN VIDEO PINTAR (FLASHBACK) ---
 const FlashbackItem = ({ item, activeVideoId, setActiveVideoId, STORAGE_URL }) => {
   const videoRef = useRef(null);
   const isActive = activeVideoId === item.id;
@@ -236,7 +295,14 @@ const Home = () => {
         finally { setTimeout(() => { setIsAppLoading(false); }, 2500); }
     };
     fetchAllData();
+    
+    const handleScroll = () => {
+        setScrolled(window.scrollY > 50);
+    };
+    window.addEventListener('scroll', handleScroll);
+
     if (window.innerWidth < 768) setShowDeviceAlert(true);
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   // --- LOGIKA AUDIO ---
@@ -267,10 +333,8 @@ const Home = () => {
 
   const stopBgMusic = () => { if (bgAudioRef.current) bgAudioRef.current.pause(); };
   
-  // --- FUNGSI STOP JUKEBOX & RESUME BACKSOUND ---
   const handleStopJukebox = () => {
-      setActiveSong(null); // Matikan Player
-      // Nyalakan kembali Backsound
+      setActiveSong(null);
       if (bgAudioRef.current) {
           bgAudioRef.current.volume = 0.5;
           bgAudioRef.current.play().catch(e => console.log("Bg resume error:", e));
@@ -370,7 +434,7 @@ const Home = () => {
       </div>
       <audio ref={bgAudioRef} src="/backsound.mp3" loop />
 
-      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-[#051125]/80 backdrop-blur-md shadow-lg py-3 border-b border-white/5' : 'bg-transparent py-6'}`}>
+      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-[#051125]/90 backdrop-blur-md shadow-lg py-3 border-b border-white/5' : 'bg-transparent py-6'}`}>
         <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => scrollToSection('hero')}>
                 <span className="text-2xl">🎓</span><span className="font-serif font-bold text-yellow-500 tracking-widest text-lg md:text-xl">RENAISSANS</span>
@@ -383,10 +447,11 @@ const Home = () => {
             </div>
             <div className="w-8"></div> 
         </div>
+        {/* Notice Board diselipkan di dalam Nav, di bagian bawah */}
+        <NoticeBoard />
       </nav>
 
-      {/* HERO, WORDS, GURU, SISWA, GALLERY, JOURNEY, FLASHBACK, SIGNATURE (Tidak berubah, dilipat) */}
-      <header id="hero" className="text-center pt-32 pb-16 px-4 relative overflow-hidden z-10">
+      <header id="hero" className="text-center pt-48 pb-16 px-4 relative overflow-hidden z-10">
           <div className="relative z-10 flex flex-col items-center justify-center mb-8 group animate-fade-in-up">
              <div className="relative w-32 h-32 md:w-44 md:h-44 rounded-full bg-[#0a1529] border-4 border-yellow-500/50 shadow-[0_0_60px_rgba(234,179,8,0.4)] flex items-center justify-center animate-float group-hover:scale-105 transition duration-500 overflow-hidden"><img src="logo.png" alt="Logo" className="w-full h-full object-cover p-2 rounded-full opacity-90 group-hover:opacity-100 transition"/></div>
              <div className="mt-4 bg-gradient-to-r from-yellow-700 to-yellow-500 text-black text-[10px] md:text-xs font-bold px-6 py-1 rounded-full tracking-[0.2em] uppercase shadow-lg transform -translate-y-4 group-hover:-translate-y-2 transition duration-300">Est. 2024</div>
@@ -475,7 +540,7 @@ const Home = () => {
 
       <section className="py-20 px-6 relative overflow-hidden bg-[#051125] z-10"><div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/black-chalk.png')]"></div><div className="max-w-6xl mx-auto relative z-10"><div className="text-center mb-12"><h3 className="text-yellow-500 font-serif text-2xl tracking-[0.3em] uppercase mb-4">Leave Your Mark</h3><h2 className="text-4xl md:text-5xl font-bold text-white leading-tight">THE SIGNATURE WALL</h2></div><div className="bg-[#0f1f3b]/80 backdrop-blur border-4 border-gray-800 rounded-3xl p-8 relative shadow-[inset_0_0_50px_rgba(0,0,0,0.5)] h-[600px]"><div className="h-full overflow-y-auto custom-scrollbar flex flex-wrap justify-center content-start gap-12 p-10 pb-24">{signatures.map((sign) => (<div key={sign.id} className={`cursor-default select-none group transition duration-500 hover:scale-150 transform hover:z-50`} style={{ transform: `rotate(${sign.style?.rotation || '0deg'}) scale(${sign.style?.scale || 1})` }}><span className={`${sign.style?.font || 'font-marker'} text-3xl md:text-5xl ${sign.style?.color || 'text-white'} opacity-90 group-hover:opacity-100 transition duration-300 drop-shadow-md`}>{sign.nama_pengirim}</span></div>))}</div><div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-20"><button onClick={() => setShowSigModal(true)} className="border-2 border-dashed border-gray-500 rounded-lg px-6 py-3 text-gray-400 font-bold hover:text-yellow-500 hover:border-yellow-500 hover:bg-yellow-500/10 transition flex items-center gap-2 backdrop-blur-sm bg-black/60 shadow-xl hover:scale-105 transform"><span>+</span> Add Yours</button></div></div></div></section>
 
-      {/* JUKEBOX SECTION (UPDATED) */}
+      {/* JUKEBOX SECTION */}
       <section className="py-24 px-6 bg-[#0a192f] relative overflow-hidden z-10">
         <div className="text-center mb-16 relative z-10">
             <h3 className="text-yellow-500 font-serif text-4xl tracking-widest uppercase">Our Soundtrack</h3>
