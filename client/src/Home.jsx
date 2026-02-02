@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TypeAnimation } from 'react-type-animation';
-import { Link } from 'react-router-dom';
 import { supabase } from './supabaseClient'; 
 
 // --- 1. KOMPONEN VIDEO PINTAR (FLASHBACK) ---
@@ -171,71 +170,15 @@ const Home = () => {
   // --- STATES & REF ---
   const bgAudioRef = useRef(null);
   const flashbackSectionRef = useRef(null); 
+  
+  // State Loading & Intro
+  const [isAppLoading, setIsAppLoading] = useState(true); // State Baru: LOADING AWAL
   const [showIntro, setShowIntro] = useState(true);
   const [animateExit, setAnimateExit] = useState(false);
+  
   const [scrolled, setScrolled] = useState(false);
   const [activeVideoId, setActiveVideoId] = useState(null); 
-  
-  // State baru untuk Deteksi Device
   const [showDeviceAlert, setShowDeviceAlert] = useState(false);
-
-  // --- LOGIKA AUDIO ---
-  const handleEnterWebsite = () => {
-    setAnimateExit(true);
-    setTimeout(() => {
-        setShowIntro(false);
-        if (bgAudioRef.current) {
-            bgAudioRef.current.volume = 0.5;
-            bgAudioRef.current.play().catch(e => console.log("Audio play error:", e));
-        }
-    }, 1000);
-  };
-
-  // Logika Audio Ducking
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (bgAudioRef.current) {
-          if (entry.isIntersecting) {
-            bgAudioRef.current.volume = 0.1; 
-          } else {
-            bgAudioRef.current.volume = 0.5; 
-            setActiveVideoId(null); 
-          }
-        }
-      },
-      { threshold: 0.2 } 
-    );
-    if (flashbackSectionRef.current) observer.observe(flashbackSectionRef.current);
-    return () => observer.disconnect();
-  }, []);
-
-  const stopBgMusic = () => { if (bgAudioRef.current) bgAudioRef.current.pause(); };
-
-  // --- LOGIKA DETEKSI DEVICE (BARU) ---
-  useEffect(() => {
-    // Cek lebar layar. Jika < 768px (Mobile/Tablet Portrait), tampilkan saran
-    const checkDevice = () => {
-      if (window.innerWidth < 768) {
-        setShowDeviceAlert(true);
-      }
-    };
-    
-    // Jalankan saat pertama kali load
-    checkDevice();
-  }, []);
-
-  // --- NAVBAR SCROLL ---
-  useEffect(() => {
-    const handleScroll = () => { setScrolled(window.scrollY > 50); };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  const scrollToSection = (id) => {
-    const element = document.getElementById(id);
-    if (element) element.scrollIntoView({ behavior: 'smooth' });
-  };
 
   // --- STATES DATA ---
   const [students, setStudents] = useState([]);
@@ -264,37 +207,96 @@ const Home = () => {
   const fonts = ['font-marker', 'font-rock', 'font-caveat', 'font-shadows', 'font-dancing', 'font-indie', 'font-gloria'];
   const colors = ['text-pink-400', 'text-yellow-400', 'text-cyan-400', 'text-green-400', 'text-purple-400', 'text-red-400', 'text-white'];
 
-  // --- LOAD DATA SUPABASE ---
+  // --- LOAD DATA SUPABASE (DIPANGGIL SAAT AWAL) ---
   useEffect(() => {
-    const fetchData = async () => {
-        const get = async (table) => { const { data } = await supabase.from(table).select('*').order('id', { ascending: true }); return data || []; };
+    const fetchAllData = async () => {
+        try {
+            const get = async (table) => { const { data } = await supabase.from(table).select('*').order('id', { ascending: true }); return data || []; };
 
-        setStudents(await get('students'));
-        const w = await get('wali_kelas'); if(w && w.length > 0) setWali(w[0]);
-        setJourney(await get('journey'));
-        setPlaylist(await get('playlist'));
-        setWords(await get('words_unsaid'));
-        setGallery(await get('gallery'));
-        setFlashback(await get('flashback'));
-        
-        const { data: sigs } = await supabase.from('signatures').select('*').order('created_at', { ascending: false });
-        if (sigs) {
-            const dataWithStyle = sigs.map(item => ({
-                ...item,
-                style: {
-                    rotation: `${Math.floor(Math.random() * 40) - 20}deg`, 
-                    scale: 0.9 + Math.random() * 0.3,
-                    color: colors[Math.floor(Math.random() * colors.length)],
-                    font: fonts[Math.floor(Math.random() * fonts.length)],
-                }
-            }));
-            setSignatures(dataWithStyle);
+            // Kita pakai Promise.all supaya downloadnya barengan (paralel)
+            const [std, wl, jrn, play, wrd, gal, fls, sigs] = await Promise.all([
+                get('students'),
+                get('wali_kelas'),
+                get('journey'),
+                get('playlist'),
+                get('words_unsaid'),
+                get('gallery'),
+                get('flashback'),
+                supabase.from('signatures').select('*').order('created_at', { ascending: false })
+            ]);
+
+            setStudents(std);
+            if(wl && wl.length > 0) setWali(wl[0]);
+            setJourney(jrn);
+            setPlaylist(play);
+            setWords(wrd);
+            setGallery(gal);
+            setFlashback(fls);
+
+            if (sigs.data) {
+                const dataWithStyle = sigs.data.map(item => ({
+                    ...item,
+                    style: {
+                        rotation: `${Math.floor(Math.random() * 40) - 20}deg`, 
+                        scale: 0.9 + Math.random() * 0.3,
+                        color: colors[Math.floor(Math.random() * colors.length)],
+                        font: fonts[Math.floor(Math.random() * fonts.length)],
+                    }
+                }));
+                setSignatures(dataWithStyle);
+            }
+        } catch (error) {
+            console.error("Error loading memories:", error);
+        } finally {
+            // Beri sedikit jeda agar animasi loading sempat terlihat (Estetik)
+            setTimeout(() => {
+                setIsAppLoading(false);
+            }, 2500);
         }
     };
-    fetchData();
+
+    fetchAllData();
+    
+    // Cek Device
+    if (window.innerWidth < 768) {
+        setShowDeviceAlert(true);
+    }
   }, []);
 
-  // --- HANDLERS ---
+  // --- LOGIKA AUDIO DUCKING ---
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (bgAudioRef.current) {
+          if (entry.isIntersecting) {
+            bgAudioRef.current.volume = 0.1; 
+          } else {
+            bgAudioRef.current.volume = 0.5; 
+            setActiveVideoId(null); 
+          }
+        }
+      },
+      { threshold: 0.2 } 
+    );
+    if (flashbackSectionRef.current) observer.observe(flashbackSectionRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const handleEnterWebsite = () => {
+    setAnimateExit(true);
+    setTimeout(() => {
+        setShowIntro(false);
+        if (bgAudioRef.current) {
+            bgAudioRef.current.volume = 0.5;
+            bgAudioRef.current.play().catch(e => console.log("Audio play error:", e));
+        }
+    }, 1000);
+  };
+
+  const stopBgMusic = () => { if (bgAudioRef.current) bgAudioRef.current.pause(); };
+  const scrollToSection = (id) => { const element = document.getElementById(id); if (element) element.scrollIntoView({ behavior: 'smooth' }); };
+
+  // --- HANDLERS TAMBAHAN ---
   const reloadWords = async () => { const { data } = await supabase.from('words_unsaid').select('*'); if(data) setWords(data); };
   const reloadPlaylist = async () => { const { data } = await supabase.from('playlist').select('*'); if(data) setPlaylist(data); };
   const reloadSignatures = async () => {
@@ -344,9 +346,47 @@ const Home = () => {
         @keyframes scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } } .animate-scroll { display: flex; width: max-content; animation: scroll 40s linear infinite; } .animate-scroll:hover { animation-play-state: paused; }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } } .animate-fade-in-up { animation: fadeInUp 1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
         @keyframes zoomIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } } .animate-zoom-in { animation: zoomIn 0.3s ease-out forwards; }
-        @keyframes twinkling { 0% { opacity: 0.2; transform: scale(1); } 50% { opacity: 1; transform: scale(1.2); } 100% { opacity: 0.2; transform: scale(1); } } .star { position: absolute; background: white; border-radius: 50%; animation: twinkling infinite ease-in-out; }
-        @keyframes grain { 0%, 100% { transform: translate(0, 0); } 10% { transform: translate(-5%, -10%); } 20% { transform: translate(-15%, 5%); } 30% { transform: translate(7%, -25%); } 40% { transform: translate(-5%, 25%); } 50% { transform: translate(-15%, 10%); } 60% { transform: translate(15%, 0%); } 70% { transform: translate(0%, 15%); } 80% { transform: translate(3%, 35%); } 90% { transform: translate(-10%, 10%); } } .bg-grain::after { content: ""; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E"); animation: grain 8s steps(10) infinite; pointer-events: none; z-index: 1; opacity: 0.4; }
+        
+        /* Optimasi Grain untuk Mobile: Matikan di layar kecil untuk performa */
+        @media (min-width: 768px) {
+            @keyframes grain { 0%, 100% { transform: translate(0, 0); } 10% { transform: translate(-5%, -10%); } 20% { transform: translate(-15%, 5%); } 30% { transform: translate(7%, -25%); } 40% { transform: translate(-5%, 25%); } 50% { transform: translate(-15%, 10%); } 60% { transform: translate(15%, 0%); } 70% { transform: translate(0%, 15%); } 80% { transform: translate(3%, 35%); } 90% { transform: translate(-10%, 10%); } } 
+            .bg-grain::after { content: ""; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E"); animation: grain 8s steps(10) infinite; pointer-events: none; z-index: 1; opacity: 0.4; }
+        }
       `}</style>
+
+      {/* --- PHASE 0: PRE-LOADER (MEMPERBAIKI RASA LAG) --- */}
+      {isAppLoading && (
+        <div className="fixed inset-0 z-[100000] bg-black flex flex-col items-center justify-center">
+            <div className="w-16 h-16 md:w-24 md:h-24 border-4 border-yellow-500/30 border-t-yellow-500 rounded-full animate-spin mb-8"></div>
+            <p className="text-yellow-500 font-serif text-sm md:text-xl tracking-[0.2em] animate-pulse uppercase text-center px-4">
+                Tunggu sebentar,<br/> kenangan sedang dikembalikan...
+            </p>
+            <p className="text-gray-600 text-[10px] mt-4 font-mono">Loading memories...</p>
+        </div>
+      )}
+
+      {/* --- PHASE 1: INTRO GATE (HANYA MUNCUL SETELAH LOADING SELESAI) --- */}
+      {!isAppLoading && showIntro && (
+        <div className={`fixed inset-0 z-[9999] bg-[#020a1a] flex flex-col items-center justify-center text-center p-4 transition-all duration-1000 ${animateExit ? 'opacity-0 scale-110' : 'opacity-100'}`}>
+           <div className="mb-8 relative animate-float">
+                <div className="absolute inset-0 bg-yellow-500 blur-[80px] opacity-20"></div>
+                <div className="w-32 h-32 md:w-40 md:h-40 bg-gradient-to-tr from-yellow-600 to-yellow-400 rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(234,179,8,0.5)] relative z-10 border-4 border-yellow-200/20"><span className="text-5xl">🎓</span></div>
+           </div>
+           <h1 className="text-4xl md:text-7xl font-serif text-white font-bold mb-4 tracking-widest animate-fade-in-up">RENAISSANS</h1>
+           <p className="text-yellow-500/80 mb-12 text-sm tracking-[0.5em] uppercase font-bold animate-pulse">Class of Memories</p>
+           <button onClick={handleEnterWebsite} className="group relative px-12 py-5 bg-transparent border border-yellow-500 text-yellow-500 text-sm font-bold uppercase tracking-[0.2em] rounded-full overflow-hidden hover:text-black transition-all duration-500 shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:shadow-[0_0_60px_rgba(234,179,8,0.8)] hover:scale-105"><span className="absolute inset-0 w-full h-full bg-yellow-500/0 group-hover:bg-yellow-500 transition-all duration-500 ease-out"></span><span className="relative flex items-center gap-3"><span>Buka Album</span><span className="group-hover:translate-x-1 transition-transform">▶</span></span></button>
+           <p className="absolute bottom-10 text-gray-600 text-[10px] animate-bounce">Tap to Start Experience 🎧</p>
+           
+           {/* Pop up saran device (Bisa di-dismiss) */}
+           {showDeviceAlert && (
+               <div className="absolute top-10 right-4 bg-yellow-500/10 border border-yellow-500/50 p-4 rounded-xl max-w-xs backdrop-blur-md animate-fade-in-up text-left">
+                  <p className="text-yellow-500 font-bold text-xs mb-1">💡 Tips:</p>
+                  <p className="text-gray-300 text-[10px]">Aktifkan "Mode Desktop" di Chrome atau buka di Laptop untuk pengalaman terbaik.</p>
+                  <button onClick={() => setShowDeviceAlert(false)} className="mt-2 text-[10px] text-white underline">Tutup</button>
+               </div>
+           )}
+        </div>
+      )}
 
       {/* BACKGROUND & AUDIO */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-grain">
@@ -355,29 +395,6 @@ const Home = () => {
          <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-blue-900/10 blur-[150px] rounded-full animate-float" style={{animationDelay: '2s'}}></div>
       </div>
       <audio ref={bgAudioRef} src="/backsound.mp3" loop />
-
-      {/* --- POP UP SARAN DEVICE (FITUR BARU) --- */}
-      {showDeviceAlert && (
-        <div className="fixed inset-0 z-[10001] bg-black/95 flex items-center justify-center p-6 backdrop-blur-md animate-fade-in-up">
-           <div className="bg-[#0f1f3b] border border-yellow-500/50 p-6 md:p-8 rounded-2xl max-w-sm w-full text-center shadow-[0_0_50px_rgba(234,179,8,0.2)] relative">
-              <div className="text-4xl mb-4 animate-bounce">💻 ↔️ 📱</div>
-              <h3 className="text-xl font-serif font-bold text-yellow-500 mb-2">Saran Tampilan</h3>
-              <p className="text-gray-300 text-sm mb-4 leading-relaxed">
-                 Website ini didesain sinematik. Untuk pengalaman terbaik:
-              </p>
-              <ul className="text-left text-xs text-gray-400 mb-6 space-y-3 bg-black/20 p-4 rounded-lg border border-white/5">
-                 <li className="flex items-center gap-2"><span className="text-green-500">✅</span> Buka di <b>Laptop / PC</b></li>
-                 <li className="flex items-center gap-2"><span className="text-green-500">✅</span> Atau aktifkan <b>"Situs Desktop"</b> di Browser HP kamu</li>
-              </ul>
-              <button 
-                onClick={() => setShowDeviceAlert(false)} 
-                className="w-full bg-yellow-500 text-black font-bold py-3 rounded-full hover:bg-yellow-400 transition transform hover:scale-105"
-              >
-                 Oke, Lanjut Masuk 🚀
-              </button>
-           </div>
-        </div>
-      )}
 
       {/* NAVBAR */}
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-[#051125]/80 backdrop-blur-md shadow-lg py-3 border-b border-white/5' : 'bg-transparent py-6'}`}>
@@ -394,20 +411,6 @@ const Home = () => {
             <div className="w-8"></div> 
         </div>
       </nav>
-
-      {/* INTRO SCREEN */}
-      {showIntro && (
-        <div className={`fixed inset-0 z-[9999] bg-[#020a1a] flex flex-col items-center justify-center text-center p-4 transition-all duration-1000 ${animateExit ? 'opacity-0 scale-110' : 'opacity-100'}`}>
-           <div className="mb-8 relative animate-float">
-                <div className="absolute inset-0 bg-yellow-500 blur-[80px] opacity-20"></div>
-                <div className="w-32 h-32 md:w-40 md:h-40 bg-gradient-to-tr from-yellow-600 to-yellow-400 rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(234,179,8,0.5)] relative z-10 border-4 border-yellow-200/20"><span className="text-5xl">🎓</span></div>
-           </div>
-           <h1 className="text-4xl md:text-7xl font-serif text-white font-bold mb-4 tracking-widest animate-fade-in-up">RENAISSANS</h1>
-           <p className="text-yellow-500/80 mb-12 text-sm tracking-[0.5em] uppercase font-bold animate-pulse">Class of Memories</p>
-           <button onClick={handleEnterWebsite} className="group relative px-12 py-5 bg-transparent border border-yellow-500 text-yellow-500 text-sm font-bold uppercase tracking-[0.2em] rounded-full overflow-hidden hover:text-black transition-all duration-500 shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:shadow-[0_0_60px_rgba(234,179,8,0.8)] hover:scale-105"><span className="absolute inset-0 w-full h-full bg-yellow-500/0 group-hover:bg-yellow-500 transition-all duration-500 ease-out"></span><span className="relative flex items-center gap-3"><span>Buka Album</span><span className="group-hover:translate-x-1 transition-transform">▶</span></span></button>
-           <p className="absolute bottom-10 text-gray-600 text-[10px] animate-bounce">Tap to Start Experience 🎧</p>
-        </div>
-      )}
 
       {/* HERO SECTION */}
       <header id="hero" className="text-center pt-32 pb-16 px-4 relative overflow-hidden z-10">
