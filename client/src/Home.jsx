@@ -171,16 +171,18 @@ const Home = () => {
   const bgAudioRef = useRef(null);
   const flashbackSectionRef = useRef(null); 
   
-  // State Loading & Intro
-  const [isAppLoading, setIsAppLoading] = useState(true); // State Baru: LOADING AWAL
+  const [isAppLoading, setIsAppLoading] = useState(true);
   const [showIntro, setShowIntro] = useState(true);
   const [animateExit, setAnimateExit] = useState(false);
-  
   const [scrolled, setScrolled] = useState(false);
+  
   const [activeVideoId, setActiveVideoId] = useState(null); 
   const [showDeviceAlert, setShowDeviceAlert] = useState(false);
 
-  // --- STATES DATA ---
+  // State untuk Jukebox Player (Null = Tidak ada lagu yg main)
+  const [activeSong, setActiveSong] = useState(null);
+
+  // --- LOAD DATA SUPABASE ---
   const [students, setStudents] = useState([]);
   const [wali, setWali] = useState(null); 
   const [journey, setJourney] = useState([]); 
@@ -202,26 +204,16 @@ const Home = () => {
   const [newWordTo, setNewWordTo] = useState("");
   const [newWordMsg, setNewWordMsg] = useState("");
   const [newSongData, setNewSongData] = useState({ title: '', artist: '', spotifyId: '', requestedBy: '' });
-  const [activeSong, setActiveSong] = useState({ id: "2zE01Qg5W7z9r7Xqj3Z1Z1", source: "spotify" });
-
+  
   const fonts = ['font-marker', 'font-rock', 'font-caveat', 'font-shadows', 'font-dancing', 'font-indie', 'font-gloria'];
   const colors = ['text-pink-400', 'text-yellow-400', 'text-cyan-400', 'text-green-400', 'text-purple-400', 'text-red-400', 'text-white'];
 
-  // --- LOAD DATA SUPABASE (DIPANGGIL SAAT AWAL) ---
   useEffect(() => {
     const fetchAllData = async () => {
         try {
             const get = async (table) => { const { data } = await supabase.from(table).select('*').order('id', { ascending: true }); return data || []; };
-
-            // Kita pakai Promise.all supaya downloadnya barengan (paralel)
             const [std, wl, jrn, play, wrd, gal, fls, sigs] = await Promise.all([
-                get('students'),
-                get('wali_kelas'),
-                get('journey'),
-                get('playlist'),
-                get('words_unsaid'),
-                get('gallery'),
-                get('flashback'),
+                get('students'), get('wali_kelas'), get('journey'), get('playlist'), get('words_unsaid'), get('gallery'), get('flashback'),
                 supabase.from('signatures').select('*').order('created_at', { ascending: false })
             ]);
 
@@ -236,44 +228,24 @@ const Home = () => {
             if (sigs.data) {
                 const dataWithStyle = sigs.data.map(item => ({
                     ...item,
-                    style: {
-                        rotation: `${Math.floor(Math.random() * 40) - 20}deg`, 
-                        scale: 0.9 + Math.random() * 0.3,
-                        color: colors[Math.floor(Math.random() * colors.length)],
-                        font: fonts[Math.floor(Math.random() * fonts.length)],
-                    }
+                    style: { rotation: `${Math.floor(Math.random() * 40) - 20}deg`, scale: 0.9 + Math.random() * 0.3, color: colors[Math.floor(Math.random() * colors.length)], font: fonts[Math.floor(Math.random() * fonts.length)] }
                 }));
                 setSignatures(dataWithStyle);
             }
-        } catch (error) {
-            console.error("Error loading memories:", error);
-        } finally {
-            // Beri sedikit jeda agar animasi loading sempat terlihat (Estetik)
-            setTimeout(() => {
-                setIsAppLoading(false);
-            }, 2500);
-        }
+        } catch (error) { console.error("Error loading memories:", error); } 
+        finally { setTimeout(() => { setIsAppLoading(false); }, 2500); }
     };
-
     fetchAllData();
-    
-    // Cek Device
-    if (window.innerWidth < 768) {
-        setShowDeviceAlert(true);
-    }
+    if (window.innerWidth < 768) setShowDeviceAlert(true);
   }, []);
 
-  // --- LOGIKA AUDIO DUCKING ---
+  // --- LOGIKA AUDIO ---
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (bgAudioRef.current) {
-          if (entry.isIntersecting) {
-            bgAudioRef.current.volume = 0.1; 
-          } else {
-            bgAudioRef.current.volume = 0.5; 
-            setActiveVideoId(null); 
-          }
+          if (entry.isIntersecting) { bgAudioRef.current.volume = 0.1; } 
+          else { bgAudioRef.current.volume = 0.5; setActiveVideoId(null); }
         }
       },
       { threshold: 0.2 } 
@@ -294,9 +266,20 @@ const Home = () => {
   };
 
   const stopBgMusic = () => { if (bgAudioRef.current) bgAudioRef.current.pause(); };
+  
+  // --- FUNGSI STOP JUKEBOX & RESUME BACKSOUND ---
+  const handleStopJukebox = () => {
+      setActiveSong(null); // Matikan Player
+      // Nyalakan kembali Backsound
+      if (bgAudioRef.current) {
+          bgAudioRef.current.volume = 0.5;
+          bgAudioRef.current.play().catch(e => console.log("Bg resume error:", e));
+      }
+  };
+
   const scrollToSection = (id) => { const element = document.getElementById(id); if (element) element.scrollIntoView({ behavior: 'smooth' }); };
 
-  // --- HANDLERS TAMBAHAN ---
+  // --- HANDLERS LAIN ---
   const reloadWords = async () => { const { data } = await supabase.from('words_unsaid').select('*'); if(data) setWords(data); };
   const reloadPlaylist = async () => { const { data } = await supabase.from('playlist').select('*'); if(data) setPlaylist(data); };
   const reloadSignatures = async () => {
@@ -315,19 +298,16 @@ const Home = () => {
     const { error } = await supabase.from('signatures').insert([{ nama_pengirim: newSigName, pesan: "Signature Wall" }]);
     if(!error) { setNewSigName(""); setShowSigModal(false); reloadSignatures(); alert("Tanda tangan ditempel!"); } 
   };
-
   const handleAddWord = async (e) => { 
     e.preventDefault(); const recipient = newWordTo.trim() === "" ? "Seseorang" : newWordTo;
     const { error } = await supabase.from('words_unsaid').insert([{ untuk: recipient, pesan: newWordMsg }]);
     if(!error) { setNewWordTo(""); setNewWordMsg(""); setShowWordModal(false); reloadWords(); alert("Pesan terkirim!"); }
   };
-  
   const handleAddSong = async (e) => { 
       e.preventDefault(); if(!newSongData.title || !newSongData.spotifyId) return; 
       const { error } = await supabase.from('playlist').insert([{ song_title: newSongData.title, artist: newSongData.artist, spotify_id: newSongData.spotifyId, requested_by: newSongData.requestedBy }]);
       if(!error) { setNewSongData({ title: '', artist: '', spotifyId: '', requestedBy: '' }); setShowMusicModal(false); reloadPlaylist(); alert("Lagu direquest!"); }
   };
-
   const searchMusic = (platform) => {
       const query = encodeURIComponent(`${newSongData.title} ${newSongData.artist}`);
       if (!newSongData.title) return alert("Isi Judul lagu dulu!");
@@ -346,26 +326,23 @@ const Home = () => {
         @keyframes scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } } .animate-scroll { display: flex; width: max-content; animation: scroll 40s linear infinite; } .animate-scroll:hover { animation-play-state: paused; }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } } .animate-fade-in-up { animation: fadeInUp 1s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
         @keyframes zoomIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } } .animate-zoom-in { animation: zoomIn 0.3s ease-out forwards; }
+        @keyframes spinSlow { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } .animate-spin-slow { animation: spinSlow 8s linear infinite; }
         
-        /* Optimasi Grain untuk Mobile: Matikan di layar kecil untuk performa */
         @media (min-width: 768px) {
             @keyframes grain { 0%, 100% { transform: translate(0, 0); } 10% { transform: translate(-5%, -10%); } 20% { transform: translate(-15%, 5%); } 30% { transform: translate(7%, -25%); } 40% { transform: translate(-5%, 25%); } 50% { transform: translate(-15%, 10%); } 60% { transform: translate(15%, 0%); } 70% { transform: translate(0%, 15%); } 80% { transform: translate(3%, 35%); } 90% { transform: translate(-10%, 10%); } } 
             .bg-grain::after { content: ""; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E"); animation: grain 8s steps(10) infinite; pointer-events: none; z-index: 1; opacity: 0.4; }
         }
       `}</style>
 
-      {/* --- PHASE 0: PRE-LOADER (MEMPERBAIKI RASA LAG) --- */}
+      {/* --- PHASE 0: PRE-LOADER --- */}
       {isAppLoading && (
         <div className="fixed inset-0 z-[100000] bg-black flex flex-col items-center justify-center">
             <div className="w-16 h-16 md:w-24 md:h-24 border-4 border-yellow-500/30 border-t-yellow-500 rounded-full animate-spin mb-8"></div>
-            <p className="text-yellow-500 font-serif text-sm md:text-xl tracking-[0.2em] animate-pulse uppercase text-center px-4">
-                Tunggu sebentar,<br/> kenangan sedang dikembalikan...
-            </p>
-            <p className="text-gray-600 text-[10px] mt-4 font-mono">Loading memories...</p>
+            <p className="text-yellow-500 font-serif text-sm md:text-xl tracking-[0.2em] animate-pulse uppercase text-center px-4">Tunggu sebentar,<br/> kenangan sedang dikembalikan...</p>
         </div>
       )}
 
-      {/* --- PHASE 1: INTRO GATE (HANYA MUNCUL SETELAH LOADING SELESAI) --- */}
+      {/* --- PHASE 1: INTRO GATE --- */}
       {!isAppLoading && showIntro && (
         <div className={`fixed inset-0 z-[9999] bg-[#020a1a] flex flex-col items-center justify-center text-center p-4 transition-all duration-1000 ${animateExit ? 'opacity-0 scale-110' : 'opacity-100'}`}>
            <div className="mb-8 relative animate-float">
@@ -375,9 +352,7 @@ const Home = () => {
            <h1 className="text-4xl md:text-7xl font-serif text-white font-bold mb-4 tracking-widest animate-fade-in-up">RENAISSANS</h1>
            <p className="text-yellow-500/80 mb-12 text-sm tracking-[0.5em] uppercase font-bold animate-pulse">Class of Memories</p>
            <button onClick={handleEnterWebsite} className="group relative px-12 py-5 bg-transparent border border-yellow-500 text-yellow-500 text-sm font-bold uppercase tracking-[0.2em] rounded-full overflow-hidden hover:text-black transition-all duration-500 shadow-[0_0_20px_rgba(234,179,8,0.3)] hover:shadow-[0_0_60px_rgba(234,179,8,0.8)] hover:scale-105"><span className="absolute inset-0 w-full h-full bg-yellow-500/0 group-hover:bg-yellow-500 transition-all duration-500 ease-out"></span><span className="relative flex items-center gap-3"><span>Buka Album</span><span className="group-hover:translate-x-1 transition-transform">▶</span></span></button>
-           <p className="absolute bottom-10 text-gray-600 text-[10px] animate-bounce">Tap to Start Experience 🎧</p>
            
-           {/* Pop up saran device (Bisa di-dismiss) */}
            {showDeviceAlert && (
                <div className="absolute top-10 right-4 bg-yellow-500/10 border border-yellow-500/50 p-4 rounded-xl max-w-xs backdrop-blur-md animate-fade-in-up text-left">
                   <p className="text-yellow-500 font-bold text-xs mb-1">💡 Tips:</p>
@@ -388,7 +363,6 @@ const Home = () => {
         </div>
       )}
 
-      {/* BACKGROUND & AUDIO */}
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-grain">
          {[...Array(20)].map((_, i) => ( <div key={i} className="star" style={{ top: `${Math.random() * 100}%`, left: `${Math.random() * 100}%`, width: `${Math.random() * 3 + 1}px`, height: `${Math.random() * 3 + 1}px`, animationDuration: `${Math.random() * 3 + 2}s`, animationDelay: `${Math.random() * 2}s` }}></div> ))}
          <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-purple-900/20 blur-[120px] rounded-full animate-float"></div>
@@ -396,7 +370,6 @@ const Home = () => {
       </div>
       <audio ref={bgAudioRef} src="/backsound.mp3" loop />
 
-      {/* NAVBAR */}
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-[#051125]/80 backdrop-blur-md shadow-lg py-3 border-b border-white/5' : 'bg-transparent py-6'}`}>
         <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => scrollToSection('hero')}>
@@ -412,7 +385,7 @@ const Home = () => {
         </div>
       </nav>
 
-      {/* HERO SECTION */}
+      {/* HERO, WORDS, GURU, SISWA, GALLERY, JOURNEY, FLASHBACK, SIGNATURE (Tidak berubah, dilipat) */}
       <header id="hero" className="text-center pt-32 pb-16 px-4 relative overflow-hidden z-10">
           <div className="relative z-10 flex flex-col items-center justify-center mb-8 group animate-fade-in-up">
              <div className="relative w-32 h-32 md:w-44 md:h-44 rounded-full bg-[#0a1529] border-4 border-yellow-500/50 shadow-[0_0_60px_rgba(234,179,8,0.4)] flex items-center justify-center animate-float group-hover:scale-105 transition duration-500 overflow-hidden"><img src="logo.png" alt="Logo" className="w-full h-full object-cover p-2 rounded-full opacity-90 group-hover:opacity-100 transition"/></div>
@@ -424,7 +397,6 @@ const Home = () => {
           <p className="text-gray-400 italic text-lg relative z-10 animate-fade-in-up" style={{animationDelay: '0.6s'}}>"Kenangan berlalu, tapi jejaknya abadi."</p>
       </header>
 
-      {/* WORDS UNSAID */}
       <section id="words" className="max-w-6xl mx-auto px-6 mb-24 relative z-10 animate-fade-in-up" style={{animationDelay: '0.8s'}}>
           <div className="text-center mb-10">
               <h3 className="text-yellow-500 font-serif text-2xl tracking-[0.2em] uppercase">Words Unsaid</h3>
@@ -436,7 +408,6 @@ const Home = () => {
           </div>
       </section>
 
-      {/* GURU */}
       <section className="max-w-4xl mx-auto mb-16 px-6 relative z-10">
         <div className="relative bg-[#0a192f]/80 backdrop-blur-xl border border-yellow-500/30 rounded-2xl p-8 flex flex-col md:flex-row items-center gap-8 shadow-[0_0_30px_rgba(234,179,8,0.1)] hover:shadow-[0_0_50px_rgba(234,179,8,0.3)] transition duration-500 group">
             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-yellow-500 text-black px-6 py-1 font-bold tracking-widest text-xs rounded-full uppercase shadow-lg">Wali Kelas</div>
@@ -447,7 +418,6 @@ const Home = () => {
         </div>
       </section>
 
-      {/* GRID SISWA */}
       <div id="students" className="max-w-xl mx-auto px-6 mb-12 sticky top-20 z-40">
         <div className="relative group">
             <div className="absolute -inset-1 bg-gradient-to-r from-yellow-600 to-yellow-400 rounded-full blur opacity-25 group-hover:opacity-75 transition duration-1000"></div>
@@ -470,7 +440,6 @@ const Home = () => {
         ))}
       </div>
 
-      {/* CAPTURED MOMENTS */}
       <section id="gallery" className="mb-0 pb-0 overflow-hidden relative z-10">
         <div className="text-center mb-8"><h3 className="text-yellow-500 font-serif text-2xl tracking-[0.2em] uppercase">Captured Moments</h3></div>
         <div className="border-t-4 border-b-4 border-yellow-600 bg-black/50 py-8 rotate-1 shadow-2xl mb-12 overflow-hidden backdrop-blur-sm">
@@ -482,17 +451,14 @@ const Home = () => {
         </div>
       </section>
 
-      {/* OUR JOURNEY */}
       <section id="journey" className="py-20 px-6 max-w-4xl mx-auto relative z-10">
         <div className="text-center mb-16"><h3 className="text-yellow-500 font-serif text-2xl tracking-[0.2em] uppercase mb-2">Our Journey</h3><div className="w-24 h-1 bg-yellow-500 mx-auto rounded-full animate-pulse"></div></div>
         <div className="relative border-l-2 border-yellow-500/30 ml-4 md:ml-1/2 space-y-12">{journey.map((item, index) => (<div key={item.id} className="relative pl-8 md:pl-0 group"><div className="absolute top-0 -left-[9px] md:left-1/2 md:-ml-[9px] w-5 h-5 bg-yellow-500 rounded-full shadow-[0_0_15px_rgba(234,179,8,0.8)] border-4 border-[#051125] group-hover:scale-125 transition duration-300 z-20"></div><div className={`md:w-1/2 ${index % 2 === 0 ? 'md:pr-12 md:text-right md:ml-0' : 'md:ml-auto md:pl-12'}`}><span className={`text-yellow-500 font-bold text-6xl opacity-10 absolute -top-10 z-0 group-hover:opacity-30 transition duration-500 ${index % 2 === 0 ? 'left-0 md:right-10' : 'left-10'}`}>{index + 1}</span><div className="relative z-10 bg-[#0a192f] p-6 rounded-xl border border-white/5 hover:border-yellow-500/50 transition duration-300 shadow-lg hover:shadow-[0_0_20px_rgba(234,179,8,0.1)] hover:-translate-y-1"><h4 className="text-xl font-bold text-white mb-2">{item.judul}</h4><span className="text-xs text-yellow-500 uppercase tracking-widest mb-4 block">{item.tahun}</span><p className="text-gray-400 text-sm leading-relaxed">{item.deskripsi}</p></div></div></div>))}</div>
       </section>
 
-      {/* FLASHBACK */}
       <section id="flashback" ref={flashbackSectionRef} className="py-24 px-4 overflow-hidden relative z-10">
         <div className="max-w-7xl mx-auto">
             <div className="flex flex-col items-center mb-16 relative z-10"><h3 className="text-5xl md:text-7xl font-serif font-bold text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-800 opacity-80 tracking-tighter animate-float">FLASHBACK</h3><p className="text-white/40 text-sm tracking-[0.5em] uppercase -mt-4 bg-[#051125] px-4">Hover/Click to Unmute</p></div>
-            
             <div className="flex flex-col md:flex-row gap-4 h-[600px] w-full">
                 {flashback.map((item) => (
                     <FlashbackItem 
@@ -507,16 +473,65 @@ const Home = () => {
         </div>
       </section>
 
-      {/* SIGNATURE WALL */}
       <section className="py-20 px-6 relative overflow-hidden bg-[#051125] z-10"><div className="absolute inset-0 opacity-10 pointer-events-none bg-[url('https://www.transparenttextures.com/patterns/black-chalk.png')]"></div><div className="max-w-6xl mx-auto relative z-10"><div className="text-center mb-12"><h3 className="text-yellow-500 font-serif text-2xl tracking-[0.3em] uppercase mb-4">Leave Your Mark</h3><h2 className="text-4xl md:text-5xl font-bold text-white leading-tight">THE SIGNATURE WALL</h2></div><div className="bg-[#0f1f3b]/80 backdrop-blur border-4 border-gray-800 rounded-3xl p-8 relative shadow-[inset_0_0_50px_rgba(0,0,0,0.5)] h-[600px]"><div className="h-full overflow-y-auto custom-scrollbar flex flex-wrap justify-center content-start gap-12 p-10 pb-24">{signatures.map((sign) => (<div key={sign.id} className={`cursor-default select-none group transition duration-500 hover:scale-150 transform hover:z-50`} style={{ transform: `rotate(${sign.style?.rotation || '0deg'}) scale(${sign.style?.scale || 1})` }}><span className={`${sign.style?.font || 'font-marker'} text-3xl md:text-5xl ${sign.style?.color || 'text-white'} opacity-90 group-hover:opacity-100 transition duration-300 drop-shadow-md`}>{sign.nama_pengirim}</span></div>))}</div><div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-20"><button onClick={() => setShowSigModal(true)} className="border-2 border-dashed border-gray-500 rounded-lg px-6 py-3 text-gray-400 font-bold hover:text-yellow-500 hover:border-yellow-500 hover:bg-yellow-500/10 transition flex items-center gap-2 backdrop-blur-sm bg-black/60 shadow-xl hover:scale-105 transform"><span>+</span> Add Yours</button></div></div></div></section>
 
-      {/* JUKEBOX */}
-      <section className="py-24 px-6 bg-[#0a192f] relative overflow-hidden z-10"><div className="text-center mb-16 relative z-10"><h3 className="text-yellow-500 font-serif text-4xl tracking-widest uppercase">Our Soundtrack</h3><button onClick={() => setShowMusicModal(true)} className="mt-6 px-6 py-2 bg-green-600 hover:bg-green-500 text-white rounded-full font-bold text-sm transition shadow-[0_0_20px_rgba(29,185,84,0.4)] hover:scale-105 flex items-center gap-2 mx-auto"><span>➕</span> Request Lagu</button></div><div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-12 items-start relative z-10"><div className="w-full lg:w-1/3 sticky top-10"><div className="relative group p-4 bg-gray-900 rounded-3xl border-4 border-gray-800 shadow-2xl"><div className="rounded-xl overflow-hidden shadow-[0_0_30px_rgba(29,185,84,0.3)] bg-black h-[352px] flex items-center justify-center">{activeSong.source === 'youtube' ? (<iframe style={{borderRadius: "12px"}} width="100%" height="352" src={`https://www.youtube.com/embed/${activeSong.id}?autoplay=1`} frameBorder="0" allow="autoplay; encrypted-media" allowFullScreen></iframe>) : (<iframe style={{borderRadius: "12px"}} src={`https://open.spotify.com/embed/track/${activeSong.id}?utm_source=generator&theme=0`} width="100%" height="352" frameBorder="0" allowFullScreen allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>)}</div></div></div><div className="w-full lg:w-2/3 grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">{playlist.map((item) => (<div key={item.id} onClick={() => { stopBgMusic(); setActiveSong({ id: item.spotify_id, source: item.source || 'spotify' }); }} className="flex items-center gap-4 bg-[#112240] p-4 rounded-xl border border-white/5 hover:border-yellow-500 hover:bg-[#1a2e52] cursor-pointer transition-all duration-300 group shadow-lg hover:-translate-x-1 hover:-translate-y-1"><div className="relative w-16 h-16 flex-shrink-0"><div className={`w-full h-full rounded-full border-2 border-yellow-500 flex items-center justify-center text-2xl group-hover:rotate-12 transition ${item.source === 'youtube' ? 'bg-red-600' : 'bg-green-600'}`}>{item.source === 'youtube' ? '▶️' : '🎵'}</div></div><div className="flex-1 overflow-hidden"><h4 className="text-white font-bold truncate text-lg">{item.song_title}</h4><p className="text-gray-400 text-sm truncate">{item.artist}</p><p className="text-xs text-gray-500 italic mt-1 truncate">Req by: <span className="text-yellow-500">{item.requested_by}</span></p></div></div>))}</div></div></section>
+      {/* JUKEBOX SECTION (UPDATED) */}
+      <section className="py-24 px-6 bg-[#0a192f] relative overflow-hidden z-10">
+        <div className="text-center mb-16 relative z-10">
+            <h3 className="text-yellow-500 font-serif text-4xl tracking-widest uppercase">Our Soundtrack</h3>
+            <button onClick={() => setShowMusicModal(true)} className="mt-6 px-6 py-2 bg-green-600 hover:bg-green-500 text-white rounded-full font-bold text-sm transition shadow-[0_0_20px_rgba(29,185,84,0.4)] hover:scale-105 flex items-center gap-2 mx-auto"><span>➕</span> Request Lagu</button>
+        </div>
+        <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-12 items-start relative z-10">
+            {/* Player Column */}
+            <div className="w-full lg:w-1/3 sticky top-10">
+                <div className="relative group p-4 bg-gray-900 rounded-3xl border-4 border-gray-800 shadow-2xl">
+                    <div className="rounded-xl overflow-hidden shadow-[0_0_30px_rgba(29,185,84,0.3)] bg-black h-[352px] flex flex-col items-center justify-center">
+                        {activeSong ? (
+                            <>
+                                {activeSong.source === 'youtube' ? (
+                                    <iframe style={{borderRadius: "12px"}} width="100%" height="300" src={`https://www.youtube.com/embed/${activeSong.id}?autoplay=1`} frameBorder="0" allow="autoplay; encrypted-media" allowFullScreen></iframe>
+                                ) : (
+                                    <iframe style={{borderRadius: "12px"}} src={`https://open.spotify.com/embed/track/${activeSong.id}?utm_source=generator&theme=0`} width="100%" height="300" frameBorder="0" allowFullScreen allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+                                )}
+                                <button 
+                                    onClick={handleStopJukebox}
+                                    className="w-full mt-2 bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded transition flex items-center justify-center gap-2"
+                                >
+                                    <span>⏹️</span> Stop & Resume Backsound
+                                </button>
+                            </>
+                        ) : (
+                            <div className="text-center opacity-50">
+                                <div className="text-5xl mb-4 animate-spin-slow">📀</div>
+                                <p className="text-sm font-mono">Pilih lagu dari playlist...</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
 
-      {/* TIME CAPSULE */}
+            {/* Playlist Column */}
+            <div className="w-full lg:w-2/3 grid grid-cols-1 md:grid-cols-2 gap-6 max-h-[600px] overflow-y-auto custom-scrollbar pr-2">
+                {playlist.map((item) => (
+                    <div key={item.id} onClick={() => { stopBgMusic(); setActiveSong({ id: item.spotify_id, source: item.source || 'spotify' }); }} className="flex items-center gap-4 bg-[#112240] p-4 rounded-xl border border-white/5 hover:border-yellow-500 hover:bg-[#1a2e52] cursor-pointer transition-all duration-300 group shadow-lg hover:-translate-x-1 hover:-translate-y-1">
+                        <div className="relative w-16 h-16 flex-shrink-0">
+                            <div className={`w-full h-full rounded-full border-2 border-yellow-500 flex items-center justify-center text-2xl group-hover:rotate-12 transition ${item.source === 'youtube' ? 'bg-red-600' : 'bg-green-600'}`}>
+                                {item.source === 'youtube' ? '▶️' : '🎵'}
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                            <h4 className="text-white font-bold truncate text-lg">{item.song_title}</h4>
+                            <p className="text-gray-400 text-sm truncate">{item.artist}</p>
+                            <p className="text-xs text-gray-500 italic mt-1 truncate">Req by: <span className="text-yellow-500">{item.requested_by}</span></p>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+      </section>
+
       <section className="py-24 px-6 relative overflow-hidden z-10"><div className="max-w-5xl mx-auto relative z-10 flex flex-col md:flex-row items-center gap-12"><div className="w-full md:w-1/2 text-left animate-fade-in-up"><h3 className="text-4xl md:text-6xl font-serif font-bold text-white mb-6 leading-tight">Time <br/> Capsule.</h3><p className="text-gray-400 text-lg mb-8 leading-relaxed">Tulis pesan untuk dirimu di masa depan. Pesan ini akan terkunci sampai kita bertemu lagi.</p></div><div className="w-full md:w-1/2"><TimeCapsuleForm /></div></div></section>
 
-      {/* FOOTER */}
       <footer className="border-t border-white/10 bg-[#020a1a] pt-16 pb-8 mt-12 relative z-10">
           <div className="max-w-6xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-8 text-center md:text-left">
               <div><h4 className="text-yellow-500 font-serif font-bold text-xl mb-4">RENAISSANS</h4><p className="text-gray-400 text-sm leading-relaxed">Sebuah ruang digital untuk menyimpan kenangan, tawa, dan cerita kita bersama.</p></div>
@@ -526,7 +541,6 @@ const Home = () => {
           <div className="mt-12 text-center border-t border-white/5 pt-8"><p className="text-white/20 text-xs tracking-[0.3em] uppercase">See You On Top</p></div>
       </footer>
 
-      {/* --- LIGHTBOX MODAL --- */}
       {selectedImage && (
         <div className="fixed inset-0 z-[10000] bg-black/95 flex items-center justify-center p-4 backdrop-blur-xl animate-fade-in" onClick={() => setSelectedImage(null)}>
            <button onClick={() => setSelectedImage(null)} className="absolute top-6 right-6 text-white/50 hover:text-white text-5xl transition z-50">×</button>
@@ -537,7 +551,6 @@ const Home = () => {
         </div>
       )}
 
-      {/* MODALS */}
       {showSigModal && (<div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in-up"><div className="bg-[#0f2545] p-8 rounded-2xl border border-white/10 w-full max-w-md shadow-2xl relative"><button onClick={() => setShowSigModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl">✕</button><h3 className="text-2xl font-bold text-yellow-500 mb-2 font-serif">Tinggalkan Jejak!</h3><form onSubmit={handleAddSignature} className="space-y-4"><input type="text" value={newSigName} onChange={(e) => setNewSigName(e.target.value)} placeholder="Ketik namamu..." maxLength={15} autoFocus className="w-full bg-[#0a192f] text-white p-4 rounded-lg border border-white/10 focus:border-yellow-500 outline-none text-center text-xl font-bold" /><button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded-lg hover:shadow-lg hover:scale-105 transition">Tempel di Dinding 📌</button></form></div></div>)}
       {showWordModal && (<div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in-up"><div className="bg-[#0f2545] p-8 rounded-2xl border border-white/10 w-full max-w-md shadow-2xl relative"><button onClick={() => setShowWordModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl">✕</button><h3 className="text-2xl font-bold text-yellow-500 mb-2 font-serif">Titip Pesan</h3><form onSubmit={handleAddWord} className="space-y-4"><input type="text" value={newWordTo} onChange={(e) => setNewWordTo(e.target.value)} placeholder="Untuk Siapa? (Boleh Kosong)" className="w-full bg-[#0a192f] text-white p-3 rounded-lg border border-white/10 focus:border-yellow-500 outline-none" /><textarea value={newWordMsg} onChange={(e) => setNewWordMsg(e.target.value)} placeholder="Pesanmu..." rows="4" className="w-full bg-[#0a192f] text-white p-3 rounded-lg border border-white/10 focus:border-yellow-500 outline-none resize-none" required /><button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded-lg hover:scale-105 transition">Kirim Pesan 💌</button></form></div></div>)}
       {showMusicModal && (<div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in-up"><div className="bg-[#0f2545] p-8 rounded-2xl border border-white/10 w-full max-w-md shadow-2xl relative"><button onClick={() => setShowMusicModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl">✕</button><h3 className="text-2xl font-bold text-yellow-500 mb-2 font-serif">Request Soundtrack</h3><form onSubmit={handleAddSong} className="space-y-3"><input type="text" placeholder="Nama Kamu" value={newSongData.requestedBy} onChange={e => setNewSongData({...newSongData, requestedBy: e.target.value})} className="w-full bg-[#0a192f] text-white p-3 rounded-lg border border-white/10 focus:border-yellow-500 outline-none" required /><div className="w-full h-[1px] bg-white/10 my-2"></div><input type="text" placeholder="Judul Lagu" value={newSongData.title} onChange={e => setNewSongData({...newSongData, title: e.target.value})} className="w-full bg-[#0a192f] text-white p-3 rounded-lg border border-white/10 focus:border-yellow-500 outline-none" required /><input type="text" placeholder="Nama Artis" value={newSongData.artist} onChange={e => setNewSongData({...newSongData, artist: e.target.value})} className="w-full bg-[#0a192f] text-white p-3 rounded-lg border border-white/10 focus:border-yellow-500 outline-none" required /><div className="flex gap-2 text-xs"><button type="button" onClick={() => searchMusic('spotify')} className="flex-1 bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white py-2 rounded transition border border-green-600/50">🔍 Cari di Spotify</button><button type="button" onClick={() => searchMusic('youtube')} className="flex-1 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white py-2 rounded transition border border-red-600/50">🔍 Cari di YouTube</button></div><input type="text" placeholder="Paste Link Spotify / YouTube..." value={newSongData.spotifyId} onChange={e => setNewSongData({...newSongData, spotifyId: e.target.value})} className="w-full bg-[#0a192f] text-white p-3 rounded-lg border border-white/10 focus:border-yellow-500 outline-none text-xs font-mono" required /><button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-400 text-black font-bold py-3 rounded-lg hover:scale-105 transition">Tambahkan ke Playlist 🎵</button></form></div></div>)}
