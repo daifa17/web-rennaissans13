@@ -184,7 +184,6 @@ const Home = () => {
 
   // --- LOAD DATA SUPABASE ---
   const [students, setStudents] = useState([]);
-  const [wali, setWali] = useState(null); 
   const [journey, setJourney] = useState([]); 
   const [signatures, setSignatures] = useState([]); 
   const [words, setWords] = useState([]);
@@ -212,13 +211,12 @@ const Home = () => {
     const fetchAllData = async () => {
         try {
             const get = async (table) => { const { data } = await supabase.from(table).select('*').order('id', { ascending: true }); return data || []; };
-            const [std, wl, jrn, play, wrd, gal, fls, sigs] = await Promise.all([
-                get('students'), get('wali_kelas'), get('journey'), get('playlist'), get('words_unsaid'), get('gallery'), get('flashback'),
+            const [std, jrn, play, wrd, gal, fls, sigs] = await Promise.all([
+                get('students'), get('journey'), get('playlist'), get('words_unsaid'), get('gallery'), get('flashback'),
                 supabase.from('signatures').select('*').order('created_at', { ascending: false })
             ]);
 
             setStudents(std);
-            if(wl && wl.length > 0) setWali(wl[0]);
             setJourney(jrn);
             setPlaylist(play);
             setWords(wrd);
@@ -385,14 +383,14 @@ const Home = () => {
         </div>
       </nav>
 
-      {/* HERO, WORDS, GURU, SISWA, GALLERY, JOURNEY, FLASHBACK, SIGNATURE (Tidak berubah, dilipat) */}
+      {/* HERO, WORDS, GURU, SISWA, GALLERY, JOURNEY, FLASHBACK, SIGNATURE */}
       <header id="hero" className="text-center pt-32 pb-16 px-4 relative overflow-hidden z-10">
           <div className="relative z-10 flex flex-col items-center justify-center mb-8 group animate-fade-in-up">
              <div className="relative w-32 h-32 md:w-44 md:h-44 rounded-full bg-[#0a1529] border-4 border-yellow-500/50 shadow-[0_0_60px_rgba(234,179,8,0.4)] flex items-center justify-center animate-float group-hover:scale-105 transition duration-500 overflow-hidden"><img src="logo.png" alt="Logo" className="w-full h-full object-cover p-2 rounded-full opacity-90 group-hover:opacity-100 transition"/></div>
              <div className="mt-4 bg-gradient-to-r from-yellow-700 to-yellow-500 text-black text-[10px] md:text-xs font-bold px-6 py-1 rounded-full tracking-[0.2em] uppercase shadow-lg transform -translate-y-4 group-hover:-translate-y-2 transition duration-300">Est. 2024</div>
           </div>
           <h1 className="text-4xl md:text-7xl font-serif text-yellow-500 font-bold mb-4 tracking-wider relative z-10 animate-fade-in-up" style={{animationDelay: '0.3s'}}>
-            <TypeAnimation sequence={['CLASS OF MEMORIES', 1000, 'OUR BEST MOMENTS', 1000, 'FOREVER YOUNG', 1000]} wrapper="span" speed={50} repeat={Infinity} cursor={true}/>
+            CLASS OF MEMORIES
           </h1>
           <p className="text-gray-400 italic text-lg relative z-10 animate-fade-in-up" style={{animationDelay: '0.6s'}}>"Kenangan berlalu, tapi jejaknya abadi."</p>
       </header>
@@ -408,15 +406,7 @@ const Home = () => {
           </div>
       </section>
 
-      <section className="max-w-4xl mx-auto mb-16 px-6 relative z-10">
-        <div className="relative bg-[#0a192f]/80 backdrop-blur-xl border border-yellow-500/30 rounded-2xl p-8 flex flex-col md:flex-row items-center gap-8 shadow-[0_0_30px_rgba(234,179,8,0.1)] hover:shadow-[0_0_50px_rgba(234,179,8,0.3)] transition duration-500 group">
-            <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-yellow-500 text-black px-6 py-1 font-bold tracking-widest text-xs rounded-full uppercase shadow-lg">Wali Kelas</div>
-            <div className="w-40 h-40 md:w-48 md:h-48 shrink-0 rounded-full border-4 border-yellow-500 overflow-hidden shadow-2xl group-hover:scale-105 transition duration-500">
-                {wali && wali.foto_url ? (<img src={`${STORAGE_URL}/${wali.foto_url}`} alt="Guru" className="w-full h-full object-cover object-top"/>) : (<div className="w-full h-full bg-gray-800 flex items-center justify-center text-xs">NO FOTO</div>)}
-            </div>
-            <div className="text-center md:text-left"><h2 className="text-3xl font-serif text-white font-bold mb-2 group-hover:text-yellow-400 transition">Bapak/Ibu Guru</h2><p className="text-yellow-500 mb-4 font-bold tracking-widest">{wali ? wali.nama : 'Loading...'}</p><blockquote className="text-gray-300 italic text-sm md:text-base border-l-4 border-yellow-500/30 pl-4">"{wali ? wali.quote : 'Loading...'}"</blockquote></div>
-        </div>
-      </section>
+      {/* SECTION WALI KELAS DIHAPUS DISINI */}
 
       <div id="students" className="max-w-xl mx-auto px-6 mb-12 sticky top-20 z-40">
         <div className="relative group">
