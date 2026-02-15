@@ -6,7 +6,7 @@ const Admin = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('students');
   
-  // --- 1. LOGIC RESPONSIVE (BIAR HP GAK RUSAK) ---
+  // --- 1. LOGIC RESPONSIVE ---
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
@@ -19,7 +19,7 @@ const Admin = () => {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // URL Storage Supabase (Pastikan Project ID benar)
+  // URL Storage Supabase
   const STORAGE_URL = 'https://fjagcvvlfaarxjitdbsy.supabase.co/storage/v1/object/public/public-files';
 
   // --- 2. STATE DATA ---
@@ -28,7 +28,7 @@ const Admin = () => {
   const [studentEditMode, setStudentEditMode] = useState({ active: false, id: null, oldPhoto: null });
   const [showStudentForm, setShowStudentForm] = useState(false);
 
-  const [wali, setWali] = useState({ id: null, nama: '', quote: '', file: null, existingFoto: '' });
+  // (Data Wali Kelas DIHAPUS)
   
   const [journey, setJourney] = useState([]);
   const [journeyForm, setJourneyForm] = useState({ tahun: '', judul: '', deskripsi: '' });
@@ -48,11 +48,10 @@ const Admin = () => {
 
   const [uploading, setUploading] = useState(false);
 
-  // --- 3. SMART FETCHING (BIAR WEBSITE RINGAN) ---
-  // Data hanya diambil saat Tab dibuka, bukan semuanya sekaligus di awal.
+  // --- 3. SMART FETCHING ---
   useEffect(() => {
     if (activeTab === 'students') fetchStudents();
-    else if (activeTab === 'wali') fetchWali();
+    // (Fetch Wali DIHAPUS)
     else if (activeTab === 'journey') fetchJourney();
     else if (activeTab === 'gallery') fetchGallery();
     else if (activeTab === 'flashback') fetchFlashback();
@@ -61,9 +60,8 @@ const Admin = () => {
     else if (activeTab === 'playlist') fetchPlaylist();
   }, [activeTab]);
 
-  // Fungsi Fetching Terpisah
+  // Fungsi Fetching
   const fetchStudents = async () => { const { data } = await supabase.from('students').select('*').order('id'); setStudents(data || []); };
-  const fetchWali = async () => { const { data } = await supabase.from('wali_kelas').select('*').limit(1).maybeSingle(); if(data) setWali({ id: data.id, nama: data.nama, quote: data.quote, existingFoto: data.foto_url, file: null }); };
   const fetchJourney = async () => { const { data } = await supabase.from('journey').select('*').order('tahun'); setJourney(data || []); };
   const fetchGallery = async () => { const { data } = await supabase.from('gallery').select('*').order('created_at', { ascending: false }); setGallery(data || []); };
   const fetchFlashback = async () => { const { data } = await supabase.from('flashback').select('*').order('created_at', { ascending: false }); setFlashback(data || []); };
@@ -71,10 +69,9 @@ const Admin = () => {
   const fetchWords = async () => { const { data } = await supabase.from('words_unsaid').select('*').order('created_at', { ascending: false }); setWords(data || []); };
   const fetchPlaylist = async () => { const { data } = await supabase.from('playlist').select('*').order('created_at', { ascending: false }); setPlaylist(data || []); };
 
-  // Helper: Refresh data tab saat ini (dipakai setelah simpan/hapus)
+  // Helper Refresh
   const refreshCurrentTab = () => {
       if (activeTab === 'students') fetchStudents();
-      else if (activeTab === 'wali') fetchWali();
       else if (activeTab === 'journey') fetchJourney();
       else if (activeTab === 'gallery') fetchGallery();
       else if (activeTab === 'flashback') fetchFlashback();
@@ -108,16 +105,22 @@ const Admin = () => {
           refreshCurrentTab(); 
       } catch (err) { alert("Gagal."); } finally { setUploading(false); }
   };
+
   const handleDeleteContent = async (table, id) => { if(window.confirm("Hapus item ini?")) { await supabase.from(table).delete().eq('id', id); refreshCurrentTab(); } };
+  
   const handleEditStudent = (s) => { setStudentEditMode({active:true, id:s.id, oldPhoto:s.foto_url}); setStudentForm({nama:s.nama, jabatan:s.jabatan, instagram:s.instagram, file:null}); setShowStudentForm(true); };
   
-  const handleUpdateWali = async (e) => { e.preventDefault(); setUploading(true); try { let f = wali.existingFoto; if(wali.file) f = await uploadFile(wali.file); await supabase.from('wali_kelas').upsert({id: wali.id, nama: wali.nama, quote: wali.quote, foto_url: f}); alert("Wali Updated!"); refreshCurrentTab(); } catch(e){alert("Gagal");} finally{setUploading(false);} };
+  // (Handler Wali DIHAPUS)
+
   const handleAddJourney = async (e) => { e.preventDefault(); await supabase.from('journey').insert([journeyForm]); alert("Journey Added!"); setJourneyForm({tahun:'',judul:'',deskripsi:''}); refreshCurrentTab(); };
+  
   const handleAddGallery = async (e) => { e.preventDefault(); if(!galleryFile) return; setUploading(true); try { const f = await uploadFile(galleryFile); await supabase.from('gallery').insert([{image_url: f, caption: galleryCaption}]); alert("Uploaded!"); setGalleryCaption(""); setGalleryFile(null); refreshCurrentTab(); } catch(e){alert("Gagal");} finally{setUploading(false);} };
+  
   const handleAddFlashback = async (e) => { e.preventDefault(); if(!flashbackFile) return; setUploading(true); try { alert("Uploading Video..."); const f = await uploadFile(flashbackFile); await supabase.from('flashback').insert([{video_url: f, title: flashbackTitle, description: flashbackDesc}]); alert("Video Uploaded!"); setFlashbackTitle(""); setFlashbackDesc(""); setFlashbackFile(null); refreshCurrentTab(); } catch(e){alert("Gagal");} finally{setUploading(false);} };
+  
   const handleLogout = async () => { await supabase.auth.signOut(); navigate('/'); };
 
-  // --- STYLING (CSS-in-JS untuk Layout Responsive) ---
+  // --- STYLING ---
   const containerStyle = { display: 'flex', minHeight: '100vh', backgroundColor: '#051125', color: 'white', overflow: 'hidden', position: 'relative' };
   const sidebarStyle = {
       width: '260px', backgroundColor: '#0a192f', borderRight: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', zIndex: 50,
@@ -137,9 +140,10 @@ const Admin = () => {
         </div>
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
             <p className="text-[10px] text-gray-500 uppercase font-bold px-4 py-2 mt-2">Core Data</p>
-            {['students', 'wali', 'journey'].map(tab => (
+            {/* 'wali' dihapus dari array */}
+            {['students', 'journey'].map(tab => (
                  <button key={tab} onClick={() => { setActiveTab(tab); if(isMobile) setIsSidebarOpen(false); }} className={`w-full text-left px-4 py-3 rounded transition text-sm ${activeTab === tab ? 'bg-yellow-500 text-black font-bold' : 'hover:bg-white/5 text-gray-300'}`}>
-                    {tab === 'students' ? '🎓 Siswa' : tab === 'wali' ? '👨‍🏫 Wali Kelas' : '🚀 Journey'}
+                    {tab === 'students' ? '🎓 Siswa' : '🚀 Journey'}
                  </button>
             ))}
             <p className="text-[10px] text-gray-500 uppercase font-bold px-4 py-2 mt-4">Media</p>
@@ -160,13 +164,13 @@ const Admin = () => {
 
       {/* MAIN CONTENT */}
       <main className="flex-1 p-4 md:p-8 overflow-y-auto h-screen relative custom-scrollbar">
-        {/* Tombol Menu Mobile */}
         {isMobile && <button onClick={() => setIsSidebarOpen(true)} className="mb-6 bg-[#0a192f] p-3 rounded text-white flex items-center gap-2 shadow-lg border border-white/10"><span>☰ MENU</span></button>}
 
-        {/* Loading Spinner */}
         {uploading && <div className="fixed inset-0 bg-black/90 z-[100] flex flex-col items-center justify-center"><div className="w-12 h-12 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin mb-4"></div><p className="text-white font-bold">Processing...</p></div>}
 
         {/* --- KONTEN TABS --- */}
+        
+        {/* STUDENTS */}
         {activeTab === 'students' && (
             <div className="animate-fade-in-up">
                 <h1 className="text-2xl font-bold mb-6">Data Siswa</h1>
@@ -194,7 +198,6 @@ const Admin = () => {
                             {students.map((s) => (
                                 <tr key={s.id} className="hover:bg-white/5 transition">
                                     <td className="p-4"><div className="w-10 h-10 rounded-full bg-gray-700 overflow-hidden border border-white/20">
-                                        {/* Loading Lazy + Object Cover agar gambar tidak gepeng */}
                                         {s.foto_url ? <img src={`${STORAGE_URL}/${s.foto_url}`} loading="lazy" className="w-full h-full object-cover" alt="foto" /> : <div className="text-[9px] h-full flex items-center justify-center">N/A</div>}
                                     </div></td>
                                     <td className="p-4 font-bold">{s.nama}</td>
@@ -211,25 +214,7 @@ const Admin = () => {
             </div>
         )}
 
-        {/* WALI KELAS */}
-        {activeTab === 'wali' && (
-            <div className="animate-fade-in-up">
-                <h1 className="text-2xl font-bold mb-6">Wali Kelas</h1>
-                <form onSubmit={handleUpdateWali} className="bg-[#0f2545] p-6 rounded-xl border border-white/10 shadow-xl max-w-2xl">
-                    <div className="flex flex-col md:flex-row gap-6 mb-4 items-center">
-                         <div className="w-24 h-24 bg-gray-700 rounded-full overflow-hidden border-2 border-yellow-500 shrink-0">
-                             {(wali.file || wali.existingFoto) && <img src={wali.file ? URL.createObjectURL(wali.file) : `${STORAGE_URL}/${wali.existingFoto}`} loading="lazy" className="w-full h-full object-cover"/>}
-                         </div>
-                         <div className="w-full space-y-3">
-                             <input type="text" value={wali.nama} onChange={e => setWali({...wali, nama: e.target.value})} className="w-full bg-[#0a192f] p-3 rounded text-white border border-white/10 outline-none focus:border-yellow-500" placeholder="Nama Wali" />
-                             <input type="file" onChange={e => setWali({...wali, file: e.target.files[0]})} className="text-sm text-gray-300" />
-                         </div>
-                    </div>
-                    <textarea rows="3" value={wali.quote} onChange={e => setWali({...wali, quote: e.target.value})} className="w-full bg-[#0a192f] p-3 rounded text-white border border-white/10 mb-4 outline-none focus:border-yellow-500" placeholder="Quote"></textarea>
-                    <button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-400 text-black py-3 rounded-lg font-bold transition">Simpan Data Wali</button>
-                </form>
-            </div>
-        )}
+        {/* TAB WALI KELAS TELAH DIHAPUS */}
 
         {/* JOURNEY */}
         {activeTab === 'journey' && (
@@ -265,7 +250,6 @@ const Admin = () => {
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
                     {gallery.map(item => (
                         <div key={item.id} className="relative group aspect-square rounded-xl overflow-hidden border border-white/10 shadow-lg">
-                            {/* Loading Lazy Aktif */}
                             <img src={`${STORAGE_URL}/${item.image_url}`} loading="lazy" className="w-full h-full object-cover transition duration-500 group-hover:scale-110" alt="Gallery" />
                             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex flex-col justify-end p-2">
                                 <p className="text-xs text-white line-clamp-2 mb-2">{item.caption}</p>
